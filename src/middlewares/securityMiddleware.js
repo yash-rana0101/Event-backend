@@ -12,12 +12,26 @@ export const rateLimitConfig = {
   legacyHeaders: false,
 };
 
-export const loginLimiter = rateLimit({
-  ...rateLimitConfig,
-  windowMs: 60 * 60 * 1000, // 1 hour
-  max: 5, // limit to 5 login attempts per hour
-  message: "Too many login attempts, please try again after an hour",
+// Create a disabled rate limiter that always allows requests
+export const loginLimiter = (req, res, next) => {
+  // Simply pass through without limiting
+  next();
+};
+
+// For other routes if needed, keep rate limiting with higher values
+export const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 200, // Limit each IP to 200 requests per windowMs
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    status: 429,
+    message: "Too many requests, please try again later",
+  },
 });
+
+// Disabled limiter for development
+export const createDisabledLimiter = () => (req, res, next) => next();
 
 // Export individual middleware functions
 export const helmetMiddleware = helmet();

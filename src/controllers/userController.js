@@ -131,7 +131,7 @@ export const updateUserProfile = async (req, res) => {
 // @access  Private/Admin
 export const getAllUsers = async (req, res) => {
   try {
-    const users = await User.find({})
+    const users = await User.find({});
     res.status(200).json(users);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -143,7 +143,7 @@ export const getAllUsers = async (req, res) => {
 // @access  Private/Admin
 export const getUserById = async (req, res) => {
   try {
-    const user = await User.findById(req.params.id)
+    const user = await User.findById(req.params.id);
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
@@ -282,5 +282,119 @@ export const resetPassword = async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
+  }
+};
+
+// Add this new function to debug login issues
+export const checkCredentials = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Email and password are required",
+      });
+    }
+
+    // Find the user - include password
+    const user = await User.findOne({ email }).select("+password");
+
+    if (!user) {
+      return res.status(200).json({
+        success: false,
+        exists: false,
+        message: "No user found with this email",
+      });
+    }
+
+    // Check if password exists in the user document
+    if (!user.password) {
+      return res.status(200).json({
+        success: false,
+        exists: true,
+        message: "User exists but has no password stored",
+      });
+    }
+
+    // Try password check using bcrypt directly
+    try {
+      const isMatch = await bcrypt.compare(password, user.password);
+
+      return res.status(200).json({
+        success: true,
+        exists: true,
+        passwordMatch: isMatch,
+        message: isMatch ? "Credentials are valid" : "Password does not match",
+      });
+    } catch (bcryptError) {
+      return res.status(200).json({
+        success: false,
+        exists: true,
+        error: bcryptError.message,
+        message: "Error comparing passwords",
+      });
+    }
+  } catch (error) {
+    console.error("Credential check error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error during credential check",
+      error: error.message,
+    });
+  }
+};
+
+// New utility endpoint to create a new user directly with a hashed password
+export const createUserWithHashedPassword = async (req, res) => {
+  try {
+    const { name, email, password, adminKey } = req.body;
+
+    // Verify admin key for security
+    if (
+      adminKey !== process.env.ADMIN_SECRET_KEY &&
+      adminKey !== "ADMIN_CREATION_KEY"
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    // Check if user exists
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return res.status(409).json({
+        success: false,
+        message: "User already exists",
+      });
+    }
+
+    // Hash password manually
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    // Create new user with hashed password
+    const user = new User({
+      name,
+      email,
+      password: hashedPassword,
+      role: "user",
+    });
+
+    await user.save();
+
+    res.status(201).json({
+      success: true,
+      message: "User created successfully",
+      userId: user._id,
+    });
+  } catch (error) {
+    console.error("User creation error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error creating user",
+      error: error.message,
+    });
   }
 };

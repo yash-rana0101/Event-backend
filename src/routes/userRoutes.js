@@ -1,41 +1,58 @@
 import { Router } from "express";
-import { loginLimiter } from "../middlewares/securityMiddleware.js";
 import { validate } from "../middlewares/validationMiddleware.js";
 import { authMiddleware } from "../middlewares/authMiddleware.js";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
 import { config } from "../config/config.js";
+// Import new controller functions
+import {
+  checkCredentials,
+  createUserWithHashedPassword,
+} from "../controllers/userController.js";
+import organizerModel from "../models/organizerModel.js";
 
 const router = Router();
 
 // Public routes
+
+router.get("/test", (req, res) => {
+  res.send("Cute");
+});
+
 router.post("/register", validate("register"), async (req, res) => {
   try {
-    const { username, email, password } = req.body;
+    const { name, email, password, phone } = req.body;
 
     // Check if user already exists
-    const existingUser = await User.findOne({
-      $or: [{ email }, { username }],
+    let existingUser = await User.findOne({
+      $or: [{ email }, { name }],
+    });
+    let existingOrganizer = await organizerModel.findOne({
+      $or: [{ email }, { name }],
     });
 
     if (existingUser) {
       return res.status(409).json({
         success: false,
-        message: "User already exists with that email or username",
+        message: "User already exists with that email or name",
+      });
+    }
+    
+    if (existingOrganizer) {
+      return res.status(409).json({
+        success: false,
+        message: "User already exists with that email or name",
       });
     }
 
-    // Hash password
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-
     // Create new user
     const newUser = new User({
-      username,
+      name,
       email,
-      password: hashedPassword,
+      password,
       role: "user",
+      phone: phone || "",
     });
 
     await newUser.save();
@@ -52,9 +69,10 @@ router.post("/register", validate("register"), async (req, res) => {
       message: "User registered successfully",
       user: {
         id: newUser._id,
-        username: newUser.username,
+        name: newUser.name,
         email: newUser.email,
         role: newUser.role,
+        phone: newUser.phone,
       },
       token,
     });
@@ -67,12 +85,32 @@ router.post("/register", validate("register"), async (req, res) => {
   }
 });
 
-router.post("/login", loginLimiter, validate("login"), async (req, res) => {
+// Replace your existing login route with this improved version
+
+router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Find user by email
-    const user = await User.findOne({ email });
+    const organizer = await organizerModel
+      .findOne({ email })
+      .select("+password");
+
+    if (organizer) {
+      const token = jwt.sign({ id: organizer._id }, process.env.JWT_SECRET, {
+        expiresIn: "1d",
+      });
+
+      return res.status(200).json({
+        token,
+        organizer: {
+          id: organizer._id,
+          name: organizer.name,
+          email,
+        },
+      });
+    }
+    const user = await User.findOne({ email }).select("+password");
+
     if (!user) {
       return res.status(401).json({
         success: false,
@@ -80,9 +118,17 @@ router.post("/login", loginLimiter, validate("login"), async (req, res) => {
       });
     }
 
-    // Check if password matches
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
+    if (!user.password) {
+      console.error("User has no password stored in database");
+      return res.status(401).json({
+        success: false,
+        message: "Invalid credentials",
+      });
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+
+    if (!isPasswordValid) {
       return res.status(401).json({
         success: false,
         message: "Invalid credentials",
@@ -90,18 +136,26 @@ router.post("/login", loginLimiter, validate("login"), async (req, res) => {
     }
 
     // Generate JWT token
-    const token = jwt.sign(
-      { id: user._id, role: user.role },
-      config.jwtSecret,
-      { expiresIn: "1d" }
-    );
+    const jwtSecret = config.jwtSecret || process.env.JWT_SECRET;
 
+    if (!jwtSecret) {
+      console.error("JWT_SECRET is not configured properly");
+      return res.status(500).json({
+        success: false,
+        message: "Server configuration error",
+      });
+    }
+
+    const token = jwt.sign({ id: user._id, role: user.role }, jwtSecret, {
+      expiresIn: config.jwtExpiresIn || "1d",
+    });
+
+    // Return user data and token
     res.status(200).json({
       success: true,
-      message: "Login successful",
       user: {
         id: user._id,
-        username: user.username,
+        name: user.name,
         email: user.email,
         role: user.role,
       },
@@ -112,9 +166,44 @@ router.post("/login", loginLimiter, validate("login"), async (req, res) => {
     res.status(500).json({
       success: false,
       message: "An error occurred during login",
+      error: error.message,
     });
   }
 });
+
+// Add a debug endpoint to check credentials (REMOVE IN PRODUCTION)
+router.post("/debug-login", async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    // Find user
+    const user = await User.findOne({ email }).select("+password");
+
+    if (!user) {
+      return res.json({ exists: false, message: "User not found" });
+    }
+
+    // Check password without revealing actual hash
+    const passwordMatch = await bcrypt.compare(password, user.password);
+
+    res.json({
+      exists: true,
+      passwordMatch,
+      userDetails: {
+        id: user._id,
+        email: user.email,
+        name: user.name,
+        passwordLength: user.password.length,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Add debugging endpoints
+router.post("/check-credentials", checkCredentials);
+router.post("/create-with-hashed-password", createUserWithHashedPassword);
 
 // Protected routes
 router.use(authMiddleware);

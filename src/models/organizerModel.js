@@ -1,6 +1,5 @@
 import { Schema, model } from "mongoose";
-import bcryptjs from "bcryptjs";
-const { hash, compare } = bcryptjs;
+import bcrypt from "bcrypt";
 
 const organizerSchema = new Schema(
   {
@@ -64,14 +63,14 @@ const organizerSchema = new Schema(
 // Hash password before saving
 organizerSchema.pre("save", async function (next) {
   if (this.isModified("password")) {
-    this.password = await hash(this.password, 10);
+    const salt = await bcrypt.genSalt(10);
+    this.password = await bcrypt.hash(this.password, salt);
   }
   next();
 });
-
 // Password comparison method
 organizerSchema.methods.comparePassword = async function (candidatePassword) {
-  return compare(candidatePassword, this.password);
+  return bcrypt.compare(candidatePassword, this.password);
 };
 
 export default model("Organizer", organizerSchema);

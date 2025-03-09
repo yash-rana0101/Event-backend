@@ -7,23 +7,60 @@ import asyncHandler from "../utils/asyncHandler.js";
 
 const router = Router();
 
+router.get("/test", (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: "API connection successful",
+    timestamp: new Date().toISOString(),
+  });
+})
+
 // Authentication routes with rate limiting
 router.post(
   "/register",
   loginLimiter,
-  validate("register"),
   asyncHandler(organizerController.register)
-);
-
-router.post(
-  "/login",
-  loginLimiter,
-  validate("login"),
-  asyncHandler(organizerController.login)
 );
 
 // Protected routes
 router.use(verifyOrganizerToken);
+
+// Add the missing /me endpoint for getting current organizer data
+router.get(
+  "/me",
+  asyncHandler(async (req, res) => {
+    // Return the organizer data from the request (added by auth middleware)
+    // If organizer property isn't available, return the user from req
+    const organizer = req.organizer || req.user;
+
+    if (!organizer) {
+      return res.status(404).json({ message: "Organizer not found" });
+    }
+
+    // Remove sensitive data before sending
+    const { password, ...organizerData } = organizer;
+
+    res.json(organizerData);
+  })
+);
+
+// Add a profile endpoint as alternative
+router.get(
+  "/profile",
+  asyncHandler(async (req, res) => {
+    // Similar to /me endpoint
+    const organizer = req.organizer || req.user;
+
+    if (!organizer) {
+      return res.status(404).json({ message: "Organizer not found" });
+    }
+
+    // Remove sensitive data before sending
+    const { password, ...organizerData } = organizer;
+
+    res.json(organizerData);
+  })
+);
 
 // Event management
 router.post(

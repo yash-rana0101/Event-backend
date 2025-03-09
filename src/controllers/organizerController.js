@@ -3,16 +3,52 @@ import Event from "../models/Event.js";
 import jwt from "jsonwebtoken";
 import { cache } from "../config/redis.js";
 import AppError from "../utils/AppError.js";
+import User from "../models/User.js";
+
+// First, define the getProfile function separately so we can reuse it
+const getProfile = async (req, res) => {
+  try {
+    const organizer = req.organizer || req.user;
+
+    if (!organizer) {
+      return res.status(404).json({ message: "Organizer not found" });
+    }
+
+    // Remove sensitive data before sending
+    const { password, ...organizerData } = organizer._doc || organizer;
+
+    res.status(200).json(organizerData);
+  } catch (error) {
+    console.error("Error fetching organizer profile:", error);
+    res.status(500).json({ message: "Failed to retrieve profile" });
+  }
+};
 
 const organizerController = {
   async register(req, res) {
     try {
-      const { name, email, password, organization } = req.validatedData;
+      const { name, email, password, organization } = req.body;      
 
-      const existingOrganizer = await Organizer.findOne({ email });
-      if (existingOrganizer) {
-        throw new AppError("Email already registered", 400);
-      }
+     let existingUser = await User.findOne({
+       $or: [{ email }, { name }],
+     });
+     let existingOrganizer = await organizerModel.findOne({
+       $or: [{ email }, { name }],
+     });
+
+     if (existingUser) {
+       return res.status(409).json({
+         success: false,
+         message: "User already exists with that email or name",
+       });
+     }
+
+     if (existingOrganizer) {
+       return res.status(409).json({
+         success: false,
+         message: "User already exists with that email or name",
+       });
+     }
 
       const organizer = await Organizer.create({
         name,
@@ -32,32 +68,6 @@ const organizerController = {
           name,
           email,
           organization,
-        },
-      });
-    } catch (error) {
-      res.status(500).json({ message: error.message });
-    }
-  },
-
-  async login(req, res) {
-    try {
-      const { email, password } = req.validatedData;
-
-      const organizer = await Organizer.findOne({ email }).select("+password");
-      if (!organizer || !(await organizer.comparePassword(password))) {
-        throw new AppError("Invalid credentials", 401);
-      }
-
-      const token = jwt.sign({ id: organizer._id }, process.env.JWT_SECRET, {
-        expiresIn: "1d",
-      });
-
-      res.json({
-        token,
-        organizer: {
-          id: organizer._id,
-          name: organizer.name,
-          email,
         },
       });
     } catch (error) {
@@ -208,6 +218,12 @@ const organizerController = {
       res.status(500).json({ message: error.message });
     }
   },
+
+  // Add the getProfile function to the controller
+  getProfile,
+
+  // Use the same function for getMe endpoint
+  getMe: getProfile, // Reference the function directly instead of using this
 };
 
 export default organizerController;
