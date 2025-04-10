@@ -25,7 +25,6 @@
     "express-validator": "^7.2.0",
     "helmet": "^6.1.5",
     "hpp": "^0.2.3",
-    "ioredis": "^5.3.2",
     "joi": "^17.9.2",
     "jsonwebtoken": "^9.0.0",
     "mailtrap": "^3.4.0",

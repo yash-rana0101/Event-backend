@@ -1,7 +1,6 @@
 import Organizer from "../models/organizerModel.js";
 import Event from "../models/Event.js";
 import jwt from "jsonwebtoken";
-import { cache } from "../config/redis.js";
 import AppError from "../utils/AppError.js";
 import User from "../models/User.js";
 
@@ -27,28 +26,28 @@ const getProfile = async (req, res) => {
 const organizerController = {
   async register(req, res) {
     try {
-      const { name, email, password, organization } = req.body;      
+      const { name, email, password, organization } = req.body;
 
-     let existingUser = await User.findOne({
-       $or: [{ email }, { name }],
-     });
-     let existingOrganizer = await organizerModel.findOne({
-       $or: [{ email }, { name }],
-     });
+      let existingUser = await User.findOne({
+        $or: [{ email }, { name }],
+      });
+      let existingOrganizer = await organizerModel.findOne({
+        $or: [{ email }, { name }],
+      });
 
-     if (existingUser) {
-       return res.status(409).json({
-         success: false,
-         message: "User already exists with that email or name",
-       });
-     }
+      if (existingUser) {
+        return res.status(409).json({
+          success: false,
+          message: "User already exists with that email or name",
+        });
+      }
 
-     if (existingOrganizer) {
-       return res.status(409).json({
-         success: false,
-         message: "User already exists with that email or name",
-       });
-     }
+      if (existingOrganizer) {
+        return res.status(409).json({
+          success: false,
+          message: "User already exists with that email or name",
+        });
+      }
 
       const organizer = await Organizer.create({
         name,
@@ -100,13 +99,6 @@ const organizerController = {
   async getEventAnalytics(req, res) {
     try {
       const { eventId } = req.params;
-      const cacheKey = `analytics:${eventId}:${req.organizer._id}`;
-
-      // Try to get from cache first
-      const cachedData = await cache.get(cacheKey);
-      if (cachedData) {
-        return res.json(cachedData);
-      }
 
       const analytics = await Event.aggregate([
         {
@@ -148,14 +140,11 @@ const organizerController = {
             },
           },
         },
-      ]).allowDiskUse(true); // For large datasets
+      ]).allowDiskUse(true);
 
       if (!analytics[0]) {
         throw new AppError("Event not found", 404);
       }
-
-      // Cache the results for 5 minutes
-      await cache.set(cacheKey, analytics[0], 300);
 
       res.json(analytics[0]);
     } catch (error) {
@@ -165,13 +154,6 @@ const organizerController = {
 
   async getDashboardStats(req, res) {
     try {
-      const cacheKey = `dashboard:${req.organizer._id}`;
-
-      const cachedStats = await cache.get(cacheKey);
-      if (cachedStats) {
-        return res.json(cachedStats);
-      }
-
       const stats = await Event.aggregate([
         { $match: { organizer: req.organizer._id } },
         {
@@ -209,9 +191,6 @@ const organizerController = {
         ...stats[0].summary[0],
         recentEvents: stats[0].recentEvents,
       };
-
-      // Cache for 15 minutes
-      await cache.set(cacheKey, dashboardStats, 900);
 
       res.json(dashboardStats);
     } catch (error) {

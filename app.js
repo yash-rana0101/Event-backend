@@ -28,8 +28,6 @@ import {
   xssMiddleware,
   hppMiddleware,
 } from "./src/middlewares/securityMiddleware.js";
-// Update Redis import
-import { cache } from "./src/config/redis.js";
 
 import { getMongoConnectionStatus } from "./src/utils/dbStatus.js";
 
@@ -102,15 +100,9 @@ app.use("/api/v1/teams", teamRoutes);
 // Health check route
 app.get("/health", async (req, res) => {
   try {
-    // Test Redis connection
-    await cache.set("health-check", "ok", 10);
-    const redisStatus =
-      (await cache.get("health-check")) === "ok" ? "connected" : "error";
-
     res.status(200).json({
       status: "ok",
       message: "Server is running",
-      redis: redisStatus,
       mongodb: getMongoConnectionStatus(),
       timestamp: new Date().toISOString(),
     });
@@ -118,7 +110,6 @@ app.get("/health", async (req, res) => {
     res.status(500).json({
       status: "error",
       message: "Service partially degraded",
-      redis: "disconnected",
       mongodb: getMongoConnectionStatus(),
       timestamp: new Date().toISOString(),
     });
@@ -179,10 +170,6 @@ app.use((req, res) => {
 // Graceful shutdown
 const gracefulShutdown = () => {
   console.log("SIGTERM signal received: closing HTTP server");
-  // Close Redis connection
-  if (cache?.client?.quit) {
-    cache.client.quit();
-  }
   // Close other connections here
   process.exit(0);
 };
