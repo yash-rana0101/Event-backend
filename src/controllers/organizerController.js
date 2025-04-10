@@ -31,7 +31,7 @@ const organizerController = {
       let existingUser = await User.findOne({
         $or: [{ email }, { name }],
       });
-      let existingOrganizer = await organizerModel.findOne({
+      let existingOrganizer = await Organizer.findOne({
         $or: [{ email }, { name }],
       });
 
