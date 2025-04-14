@@ -1,7 +1,6 @@
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
 import Organizer from "../models/organizerModel.js";
-import ApiResponse from "../utils/apiResponse.js";
 import { config } from "../config/config.js";
 
 // Helper to extract token from header
@@ -29,7 +28,7 @@ export const authMiddleware = async (req, res, next) => {
 
     if (!token) {
       return res.status(401).json({
-        message: "Authentication required. No token provided.",
+        message: "No token provided",
         code: "NO_TOKEN",
       });
     }
@@ -45,36 +44,29 @@ export const authMiddleware = async (req, res, next) => {
 
     if (!decoded || !decoded.id) {
       return res.status(401).json({
-        message: "Invalid token structure",
-        code: "INVALID_TOKEN_STRUCTURE",
+        message: "Invalid token",
+        code: "INVALID_TOKEN",
       });
     }
 
     // Check if user exists
-    const user = await User.findById(decoded.id).select("-password");
+    let user = await User.findById(decoded.id).select("-password");
+
+    // If not found as user, try organizer
+    if (!user) {
+      user = await Organizer.findById(decoded.id).select("-password");
+    }
 
     if (user) {
-      // User found, attach to request
+      // Attach user to request
       req.user = user;
+      req.userType = user.constructor.modelName.toLowerCase();
       next();
     } else {
-      // No user found, try organizer
-      const organizer = await Organizer.findById(decoded.id).select(
-        "-password"
-      );
-
-      if (organizer) {
-        // Organizer found, attach to request
-        req.user = organizer;
-        req.organizer = organizer;
-        next();
-      } else {
-        // Neither user nor organizer found
-        return res.status(401).json({
-          message: "User not found for provided token",
-          code: "USER_NOT_FOUND",
-        });
-      }
+      return res.status(401).json({
+        message: "User not found",
+        code: "USER_NOT_FOUND",
+      });
     }
   } catch (error) {
     console.error("Auth middleware error:", error);
@@ -82,15 +74,17 @@ export const authMiddleware = async (req, res, next) => {
     // Provide more specific error messages
     if (error.name === "JsonWebTokenError") {
       return res.status(401).json({
-        message: "Invalid token format or signature",
-        code: "INVALID_TOKEN",
+        message: "Invalid token format",
+        code: "INVALID_TOKEN_FORMAT",
+        error: error.message,
       });
     }
 
     if (error.name === "TokenExpiredError") {
       return res.status(401).json({
-        message: "Token expired. Please login again.",
+        message: "Token expired",
         code: "TOKEN_EXPIRED",
+        error: error.message,
       });
     }
 
@@ -110,7 +104,7 @@ export const verifyOrganizerToken = async (req, res, next) => {
 
     if (!token) {
       return res.status(401).json({
-        message: "Organizer authentication required. No token provided.",
+        message: "No token provided",
         code: "NO_TOKEN",
       });
     }
@@ -123,8 +117,8 @@ export const verifyOrganizerToken = async (req, res, next) => {
 
     if (!decoded || !decoded.id) {
       return res.status(401).json({
-        message: "Invalid token structure",
-        code: "INVALID_TOKEN_STRUCTURE",
+        message: "Invalid token",
+        code: "INVALID_TOKEN",
       });
     }
 
@@ -133,14 +127,15 @@ export const verifyOrganizerToken = async (req, res, next) => {
 
     if (!organizer) {
       return res.status(401).json({
-        message: "Organizer not found or invalid credentials",
+        message: "Organizer not found or you don't have organizer privileges",
         code: "ORGANIZER_NOT_FOUND",
       });
     }
 
     // Attach organizer to request
-    req.user = organizer; // For compatibility
+    req.user = organizer;
     req.organizer = organizer;
+    req.userType = "organizer";
     next();
   } catch (error) {
     console.error("Organizer auth middleware error:", error);
@@ -148,15 +143,17 @@ export const verifyOrganizerToken = async (req, res, next) => {
     // Provide more specific error messages
     if (error.name === "JsonWebTokenError") {
       return res.status(401).json({
-        message: "Invalid organizer token",
-        code: "INVALID_TOKEN",
+        message: "Invalid token format",
+        code: "INVALID_TOKEN_FORMAT",
+        error: error.message,
       });
     }
 
     if (error.name === "TokenExpiredError") {
       return res.status(401).json({
-        message: "Organizer token expired. Please login again.",
+        message: "Token expired",
         code: "TOKEN_EXPIRED",
+        error: error.message,
       });
     }
 
@@ -168,35 +165,90 @@ export const verifyOrganizerToken = async (req, res, next) => {
   }
 };
 
-// Admin auth middleware
-export const adminMiddleware = async (req, res, next) => {
+// Create a middleware that accepts either user or organizer
+export const anyAuthMiddleware = async (req, res, next) => {
   try {
-    // Check if user exists (should be set by authMiddleware)
-    if (!req.user) {
-      return ApiResponse.unauthorized(
-        res,
-        "Access denied. Authentication required."
-      );
+    // Get token from header
+    const token = getTokenFromHeader(req);
+
+    if (!token) {
+      return res.status(401).json({
+        message: "No token provided",
+        code: "NO_TOKEN",
+      });
     }
 
-    // Check if user is admin
-    if (req.user.role !== "admin") {
-      return ApiResponse.forbidden(
-        res,
-        "Access denied. Admin privileges required."
-      );
+    // Verify the token
+    const decoded = jwt.verify(
+      token,
+      config.jwtSecret || process.env.JWT_SECRET
+    );
+
+    if (!decoded || !decoded.id) {
+      return res.status(401).json({
+        message: "Invalid token",
+        code: "INVALID_TOKEN",
+      });
+    }
+
+    // First try to find as a user
+    let user = await User.findById(decoded.id).select("-password");
+    let userType = "user";
+
+    // If not found as user, try organizer
+    if (!user) {
+      user = await Organizer.findById(decoded.id).select("-password");
+      userType = "organizer";
+    }
+
+    if (!user) {
+      return res.status(401).json({
+        message: "User not found",
+        code: "USER_NOT_FOUND",
+      });
+    }
+
+    // Attach user to request
+    req.user = user;
+    req.userType = userType;
+
+    // For backward compatibility
+    if (userType === "organizer") {
+      req.organizer = user;
     }
 
     next();
   } catch (error) {
-    console.error("Admin middleware error:", error);
-    return ApiResponse.error(res, "Authentication failed.");
+    console.error("Auth middleware error:", error);
+
+    if (error.name === "JsonWebTokenError") {
+      return res.status(401).json({
+        message: "Invalid token format",
+        code: "INVALID_TOKEN_FORMAT",
+        error: error.message,
+      });
+    }
+
+    if (error.name === "TokenExpiredError") {
+      return res.status(401).json({
+        message: "Token expired",
+        code: "TOKEN_EXPIRED",
+        error: error.message,
+      });
+    }
+
+    return res.status(401).json({
+      message: "Authentication failed",
+      code: "AUTH_FAILED",
+      error: error.message,
+    });
   }
 };
 
-// Export default as object with all middleware
+// Export as named exports and default object
 export default {
   authMiddleware,
   verifyOrganizerToken,
-  adminMiddleware,
+  anyAuthMiddleware,
+  getTokenFromHeader,
 };
