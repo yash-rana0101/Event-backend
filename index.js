@@ -17,7 +17,7 @@ validateConfig();
 // Start server
 const PORT = config.port;
 app.listen(PORT, () => {
-  console.log(`Server running in ${config.environment} mode on port ${PORT}`);
+  console.log(`Server in running mode on port ${PORT}`);
 });
 
 
@@ -25,7 +25,9 @@ app.listen(PORT, () => {
 if (config.mongoUri) {
   mongoose
     .connect(config.mongoUri)
-    .then(() => console.log("MongoDB connected"))
+    .then(() => console.log("<-------------------------->"))
+    .then(() => console.log("    MongoDB is connected    "))
+    .then(() => console.log("<-------------------------->"))
     .catch((err) => console.error("MongoDB connection error:", err));
 } else {
   console.error("MongoDB URI is not defined. Database connection skipped.");

@@ -1,126 +1,197 @@
 import mongoose from "mongoose";
 
-const EventSchema = new mongoose.Schema({
-  title: {
-    type: String,
-    required: [true, "Please provide event title"],
-    maxlength: 100,
-  },
-  description: {
-    type: String,
-    required: [true, "Please provide event description"],
-    maxlength: 1000,
-  },
-  date: {
-    type: Date,
-    required: [true, "Please provide event date"],
-  },
+const timelineItemSchema = new mongoose.Schema({
   time: {
-    start: {
-      type: String,
-      required: [true, "Please provide start time"],
-    },
-    end: {
-      type: String,
-      required: [true, "Please provide end time"],
-    },
-  },
-  location: {
-    address: {
-      type: String,
-      required: [true, "Please provide event address"],
-    },
-    city: {
-      type: String,
-      required: [true, "Please provide city"],
-    },
-    state: {
-      type: String,
-      required: false,
-    },
-    country: {
-      type: String,
-      required: [true, "Please provide country"],
-    },
-    zipCode: {
-      type: String,
-      required: false,
-    },
-    coordinates: {
-      lat: {
-        type: Number,
-        required: false,
-      },
-      lng: {
-        type: Number,
-        required: false,
-      },
-    },
-  },
-  category: {
     type: String,
-    required: [true, "Please provide event category"],
-    enum: [
-      "conference",
-      "workshop",
-      "seminar",
-      "webinar",
-      "networking",
-      "other",
-    ],
+    required: true,
   },
-  capacity: {
-    type: Number,
-    required: false,
-    default: 0, // 0 means unlimited
-  },
-  isPaid: {
-    type: Boolean,
-    default: false,
-  },
-  price: {
-    type: Number,
-    required: function () {
-      return this.isPaid;
-    },
-    default: 0,
-  },
-  currency: {
+  event: {
     type: String,
-    required: function () {
-      return this.isPaid;
-    },
-    default: "USD",
-  },
-  images: [
-    {
-      type: String,
-      required: false,
-    },
-  ],
-  organizer: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "User",
-    required: [true, "Please provide event organizer"],
-  },
-  isPublished: {
-    type: Boolean,
-    default: false,
-  },
-  createdAt: {
-    type: Date,
-    default: Date.now,
-  },
-  updatedAt: {
-    type: Date,
-    default: Date.now,
+    required: true,
   },
 });
 
-// Update the updatedAt field on save
-EventSchema.pre("save", function (next) {
-  this.updatedAt = Date.now();
-  next();
+const prizeSchema = new mongoose.Schema({
+  place: {
+    type: String,
+    required: true,
+  },
+  amount: {
+    type: String,
+    required: true,
+  },
+  description: {
+    type: String,
+  },
+});
+
+const sponsorSchema = new mongoose.Schema({
+  name: {
+    type: String,
+    required: true,
+  },
+  tier: {
+    type: String,
+    enum: ["platinum", "gold", "silver", "bronze", "other"],
+    default: "other",
+  },
+  logo: {
+    type: String,
+  },
+});
+
+const faqSchema = new mongoose.Schema({
+  question: {
+    type: String,
+    required: true,
+  },
+  answer: {
+    type: String,
+    required: true,
+  },
+});
+
+const socialShareSchema = new mongoose.Schema({
+  likes: {
+    type: Number,
+    default: 0,
+  },
+  comments: {
+    type: Number,
+    default: 0,
+  },
+  shares: {
+    type: Number,
+    default: 0,
+  },
+});
+
+const EventSchema = new mongoose.Schema(
+  {
+    title: {
+      type: String,
+      required: [true, "Please provide event title"],
+      trim: true,
+      maxlength: [100, "Title cannot exceed 100 characters"],
+    },
+    tagline: {
+      type: String,
+      trim: true,
+      maxlength: [150, "Tagline cannot exceed 150 characters"],
+    },
+    description: {
+      type: String,
+      required: [true, "Please provide event description"],
+    },
+    date: {
+      type: String,
+      required: [true, "Please provide event date"],
+    },
+    startDate: {
+      type: Date,
+      required: [true, "Please provide event start date"],
+    },
+    endDate: {
+      type: Date,
+      required: [true, "Please provide event end date"],
+    },
+    registrationDeadline: {
+      type: String,
+    },
+    duration: {
+      type: String,
+    },
+    location: {
+      type: Object,
+      address: {
+        type: String,
+        required: [true, "Please provide event location"],
+      },
+      city: String,
+      state: String,
+      country: String,
+      zipCode: String,
+    },
+    participants: {
+      type: String,
+    },
+    capacity: {
+      type: Number,
+      default: 0, // 0 means unlimited
+    },
+    organizer: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Organizer",
+      required: [true, "Please provide event organizer"],
+    },
+    organizerName: {
+      type: String,
+    },
+    organizerLogo: {
+      type: String,
+    },
+    category: {
+      type: String,
+      enum: [
+        "conference",
+        "workshop",
+        "seminar",
+        "webinar",
+        "hackathon",
+        "meetup",
+        "networking",
+        "other",
+      ],
+      default: "other",
+    },
+    images: [
+      {
+        type: String,
+      },
+    ],
+    featured: {
+      type: Boolean,
+      default: false,
+    },
+    isPaid: {
+      type: Boolean,
+      default: false,
+    },
+    price: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    currency: {
+      type: String,
+      default: "USD",
+    },
+    timeline: [timelineItemSchema],
+    prizes: [prizeSchema],
+    sponsors: [sponsorSchema],
+    faqs: [faqSchema],
+    tags: [String],
+    socialShare: {
+      type: socialShareSchema,
+      default: () => ({}),
+    },
+    isPublished: {
+      type: Boolean,
+      default: false,
+    },
+    attendeesCount: {
+      type: Number,
+      default: 0,
+    },
+  },
+  { timestamps: true }
+);
+
+// Create text index for search functionality
+EventSchema.index({
+  title: "text",
+  description: "text",
+  tags: "text",
 });
 
 const Event = mongoose.model("Event", EventSchema);

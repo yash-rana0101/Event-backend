@@ -1,39 +1,336 @@
 import { Router } from "express";
 import { authMiddleware } from "../middlewares/authMiddleware.js";
 import { validate } from "../middlewares/validationMiddleware.js";
-import eventOrganizerMiddleware from "../middlewares/eventOrganizerMiddleware.js";
-import {
-  listPublicEvents,
-  getEventDetails,
-  createEvent,
-  updateEvent,
-  deleteEvent,
-  getEventAttendees,
-  createTicketType,
-} from "../controllers/eventController.js";
+import * as eventController from "../controllers/eventController.js";
+import Event from "../models/Event.js";
 
 const router = Router();
 
-// Public routes for viewing events
-router.get("/", listPublicEvents);
+// Public routes that don't require authentication
+router.get("/public", async (req, res) => {
+  try {
+    // Use the existing controller but only return published/active events
+    req.query.status = "active"; // Force status to be active
+    req.query.isPublished = true;
 
-router.get("/:id", getEventDetails);
+    // Get all public events with pagination
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
 
-// Protected routes - require authentication
+    // Get events with filters
+    const events = await Event.find({
+      status: "active",
+      isPublished: true,
+    })
+      .sort({ startDate: 1 })
+      .skip(skip)
+      .limit(limit)
+      .populate("organizer", "name email profilePicture");
+
+    res.status(200).json(events);
+  } catch (error) {
+    console.error("Error in public events route:", error);
+    res.status(500).json({
+      message: "Error fetching public events",
+      error: error.message,
+    });
+  }
+});
+
+// New route to get newest events
+router.get("/newest", async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 5;
+
+    // Get newest events by creation date - fixed the query to handle different field names
+    const newestEvents = await Event.find({
+      $or: [{ status: "active" }, { isPublished: true }],
+    })
+      .sort({ createdAt: -1 }) // Sort by creation date, newest first
+      .limit(limit)
+      .populate("organizer", "name email profilePicture")
+      .lean(); // Use lean() for better performance with large objects
+
+    if (!newestEvents || newestEvents.length === 0) {
+      console.log("No newest events found");
+      return res.status(200).json([]); // Return empty array instead of error
+    }
+
+    // For debugging
+    console.log(`Found ${newestEvents.length} newest events`);
+
+    res.status(200).json(newestEvents);
+  } catch (error) {
+    console.error("Error in newest events route:", error);
+    res.status(500).json({
+      message: "Error fetching newest events",
+      error: error.message,
+    });
+  }
+});
+
+// Public route for featured events
+router.get("/featured", async (req, res) => {
+  try {
+    const featuredEvents = await Event.find({
+      featured: true,
+      status: "active",
+      isPublished: true,
+    })
+      .sort({ startDate: 1 })
+      .limit(5)
+      .populate("organizer", "name email profilePicture");
+
+    res.status(200).json(featuredEvents);
+  } catch (error) {
+    console.error("Error in featured events route:", error);
+    res.status(500).json({
+      message: "Error fetching featured events",
+      error: error.message,
+    });
+  }
+});
+
+// Debugging endpoint to check raw events in database
+router.get("/debug", async (req, res) => {
+  try {
+    // Find all events without any filtering
+    const allEvents = await Event.find({}).limit(10);
+
+    // Count all events
+    const count = await Event.countDocuments({});
+
+    // Return detailed information
+    res.status(200).json({
+      success: true,
+      message: "Debug endpoint - showing raw events from database",
+      count: count,
+      sampleEvents: allEvents.map((event) => ({
+        id: event._id,
+        title: event.title,
+        status: event.status,
+        createdAt: event.createdAt,
+      })),
+      firstEvent: allEvents.length > 0 ? allEvents[0].toObject() : null,
+      collectionName: Event.collection.name,
+      indexInfo: await Event.collection.getIndexes(),
+    });
+  } catch (error) {
+    console.error("Debug endpoint error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error in debug endpoint",
+      error: error.message,
+    });
+  }
+});
+
+// Route to get all events - make it work with or without authentication
+router.get("/", async (req, res) => {
+  try {
+    // Get query parameters for filtering and pagination
+    const {
+      page = 1,
+      limit = 10,
+      category,
+      status = "active",
+      search,
+      sortBy = "startDate",
+    } = req.query;
+
+    // Build the filter object - IMPORTANT FIX: Only apply filters if they're defined
+    let filter = {};
+
+    // Only add status filter if explicitly requested (don't filter by default)
+    if (status !== "all") {
+      filter.status = status;
+    }
+
+    if (category) filter.category = category;
+
+    // Add search functionality
+    if (search) {
+      filter.$or = [
+        { title: { $regex: search, $options: "i" } },
+        { description: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    console.log("Using filter:", JSON.stringify(filter));
+
+    // Calculate pagination parameters
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    // Determine sort order
+    let sort = {};
+    if (sortBy.startsWith("-")) {
+      sort[sortBy.substring(1)] = -1;
+    } else {
+      sort[sortBy] = 1;
+    }
+
+    // Get events with filters and pagination
+    const events = await Event.find(filter)
+      .sort(sort)
+      .skip(skip)
+      .limit(parseInt(limit))
+      .populate("organizer", "name email profilePicture");
+
+    console.log(`Found ${events.length} events`);
+
+    // Count total events for pagination
+    const totalCount = await Event.countDocuments(filter);
+
+    // Calculate total pages
+    const totalPages = Math.ceil(totalCount / parseInt(limit));
+
+    console.log(`Total count: ${totalCount}, Total pages: ${totalPages}`);
+
+    res.status(200).json({
+      events,
+      currentPage: parseInt(page),
+      totalPages,
+      totalCount,
+    });
+  } catch (error) {
+    console.error("Error in get events route:", error);
+    res.status(500).json({
+      message: "Error fetching events",
+      error: error.message,
+    });
+  }
+});
+
+// Public route to get a specific event
+router.get("/:id", async (req, res) => {
+  try {
+    const event = await Event.findById(req.params.id).populate(
+      "organizer",
+      "name email profilePicture"
+    );
+
+    if (!event) {
+      return res.status(404).json({ message: "Event not found" });
+    }
+
+    res.status(200).json(event);
+  } catch (error) {
+    console.error("Error getting event by ID:", error);
+    res.status(500).json({
+      message: "Error fetching event",
+      error: error.message,
+    });
+  }
+});
+
+// Protected routes (require authentication)
 router.use(authMiddleware);
 
-// Event creation and management
-router.post("/", validate("event"), createEvent);
+router.post("/", validate("event"), async (req, res) => {
+  try {
+    const eventData = {
+      ...req.body,
+      organizer: req.user._id,
+    };
 
-// Routes requiring event organizer permission
-router.use("/:eventId", eventOrganizerMiddleware);
+    const event = await Event.create(eventData);
 
-router.put("/:eventId", validate("event"), updateEvent);
+    res.status(201).json({
+      success: true,
+      message: "Event created successfully",
+      data: event,
+    });
+  } catch (error) {
+    console.error("Error creating event:", error);
+    res.status(400).json({
+      success: false,
+      message: error.message,
+    });
+  }
+});
 
-router.delete("/:eventId", deleteEvent);
+router.put("/:id", validate("event"), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updates = req.body;
 
-router.get("/:eventId/attendees", getEventAttendees);
+    // Make sure the user is the organizer of this event or an admin
+    const event = await Event.findById(id);
 
-router.post("/:eventId/tickets", validate("ticket"), createTicketType);
+    if (!event) {
+      return res.status(404).json({
+        success: false,
+        message: "Event not found",
+      });
+    }
+
+    // Check ownership
+    if (
+      event.organizer.toString() !== req.user._id.toString() &&
+      req.user.role !== "admin"
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: "You don't have permission to update this event",
+      });
+    }
+
+    const updatedEvent = await Event.findByIdAndUpdate(id, updates, {
+      new: true,
+      runValidators: true,
+    });
+
+    res.json({
+      success: true,
+      message: "Event updated successfully",
+      data: updatedEvent,
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error.message,
+    });
+  }
+});
+
+router.delete("/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Make sure the user is the organizer of this event or an admin
+    const event = await Event.findById(id);
+
+    if (!event) {
+      return res.status(404).json({
+        success: false,
+        message: "Event not found",
+      });
+    }
+
+    // Check ownership
+    if (
+      event.organizer.toString() !== req.user._id.toString() &&
+      req.user.role !== "admin"
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: "You don't have permission to delete this event",
+      });
+    }
+
+    await Event.findByIdAndDelete(id);
+
+    res.json({
+      success: true,
+      message: "Event deleted successfully",
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error.message,
+    });
+  }
+});
 
 export default router;

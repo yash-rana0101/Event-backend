@@ -4,6 +4,9 @@ import { validate } from "../middlewares/validationMiddleware.js";
 import { loginLimiter } from "../middlewares/securityMiddleware.js";
 import { verifyOrganizerToken } from "../middlewares/authMiddleware.js";
 import asyncHandler from "../utils/asyncHandler.js";
+import { getOrganizerEvents } from "../controllers/eventController.js";
+// Import the organizerModel
+import organizerModel from "../models/organizerModel.js";
 
 const router = Router();
 
@@ -13,13 +16,45 @@ router.get("/test", (req, res) => {
     message: "API connection successful",
     timestamp: new Date().toISOString(),
   });
-})
+});
 
 // Authentication routes with rate limiting
 router.post(
   "/register",
   loginLimiter,
   asyncHandler(organizerController.register)
+);
+
+// Add the missing login endpoint
+router.post("/login", loginLimiter, asyncHandler(organizerController.login));
+
+// Public route to get organizer profile by ID (accessible without auth)
+router.get(
+  "/profile/:organizerId",
+  asyncHandler(async (req, res) => {
+    try {
+      const { organizerId } = req.params;
+
+      if (!organizerId) {
+        return res.status(400).json({ message: "Organizer ID is required" });
+      }
+
+      // Find the organizer by ID - use organizerModel instead of Organizer
+      const organizer = await organizerModel.findById(organizerId).select(
+        "-password -__v"
+      );
+
+      if (!organizer) {
+        return res.status(404).json({ message: "Organizer not found" });
+      }
+
+      // Return the organizer data (excluding sensitive fields)
+      res.json(organizer);
+    } catch (error) {
+      console.error("Error fetching organizer profile:", error);
+      res.status(500).json({ message: "Failed to retrieve organizer profile" });
+    }
+  })
 );
 
 // Protected routes
@@ -62,6 +97,28 @@ router.get(
   })
 );
 
+// Add route to fetch organizer profile details
+router.get(
+  "/:organizerId/details",
+  asyncHandler(organizerController.getOrganizerDetails)
+);
+
+// Organizer details management
+router.post(
+  "/:organizerId/details",
+  asyncHandler(organizerController.createOrganizerDetails)
+);
+
+router.put(
+  "/:organizerId/details",
+  asyncHandler(organizerController.updateOrganizerDetails)
+);
+
+router.get(
+  "/:organizerId/details",
+  asyncHandler(organizerController.getOrganizerDetails)
+);
+
 // Event management
 router.post(
   "/events",
@@ -90,6 +147,27 @@ router.delete(
 );
 
 router.get("/my-events", asyncHandler(organizerController.getOrganizerEvents));
+
+// Add route to fetch all events for a specific organizer
+router.get(
+  "/events/organizer/:organizerId",
+  verifyOrganizerToken,
+  asyncHandler(async (req, res) => {
+    const { organizerId } = req.params;
+
+    if (!organizerId || organizerId !== req.organizer._id.toString()) {
+      return res
+        .status(403)
+        .json({ message: "Access denied. Invalid organizer ID." });
+    }
+
+    const events = await Event.find({ organizer: organizerId }).populate(
+      "organizer",
+      "name email"
+    );
+    res.status(200).json(events);
+  })
+);
 
 // Attendee management
 router.get(

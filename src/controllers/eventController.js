@@ -1,360 +1,616 @@
 import Event from "../models/Event.js";
 import Registration from "../models/Registration.js";
+import organizerModel from "../models/organizerModel.js";
+import mongoose from "mongoose";
+import {
+  uploadFileToStorage,
+  deleteFileFromStorage,
+} from "../utils/fileStorage.js";
+import uploadOnCloudinary from "../utils/cloudinary.js";
 
-// @desc    Create a new event
-// @route   POST /api/events
-// @access  Private
-export const createEvent = async (req, res) => {
-  try {
-    const {
-      title,
-      description,
-      startDate,
-      endDate,
-      location,
-      capacity,
-      price,
-      category,
-      isVirtual,
-      isPublished,
-    } = req.body;
+// Function to validate event data before saving
+export const validateEventData = (eventData) => {
+  const requiredFields = ["title", "description", "startDate"];
+  const missingFields = requiredFields.filter((field) => !eventData[field]);
 
-    const event = new Event({
-      title,
-      description,
-      startDate,
-      endDate,
-      location,
-      capacity,
-      price: price || 0,
-      category,
-      isVirtual: isVirtual || false,
-      isPublished: isPublished || false,
-      organizer: req.user._id,
-      images: [],
-    });
-
-    const createdEvent = await event.save();
-    res.status(201).json(createdEvent);
-  } catch (error) {
-    res.status(400).json({ message: error.message });
+  if (missingFields.length > 0) {
+    return {
+      valid: false,
+      missingFields,
+      message: `Missing required fields: ${missingFields.join(", ")}`,
+    };
   }
+
+  // Ensure status is set with a default value if not provided
+  if (!eventData.status) {
+    eventData.status = "active";
+  }
+
+  return {
+    valid: true,
+    data: eventData,
+  };
 };
 
-// @desc    Get all events (including unpublished)
-// @route   GET /api/events
-// @access  Private/Admin
+// Get all events (with filtering and pagination)
 export const getAllEvents = async (req, res) => {
   try {
-    const events = await Event.find({}).populate("organizer", "name email");
-    res.status(200).json(events);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
+    const {
+      page = 1,
+      limit = 10,
+      sort = "-createdAt",
+      category,
+      featured,
+      isPaid,
+      search,
+      startDate,
+      endDate,
+    } = req.query;
 
-// @desc    Get published events
-// @route   GET /api/events/published
-// @access  Public
-export const getPublishedEvents = async (req, res) => {
-  try {
-    const { category, page = 1, limit = 10 } = req.query;
+    const query = {};
 
-    const queryObject = { isPublished: true };
+    // Apply filters
+    if (category) query.category = category;
+    if (featured === "true") query.featured = true;
+    if (isPaid === "true") query.isPaid = true;
+    if (isPaid === "false") query.isPaid = false;
 
-    if (category) {
-      queryObject.category = category;
+    // Search query
+    if (search) {
+      query.$text = { $search: search };
     }
 
-    const events = await Event.find(queryObject)
-      .populate("organizer", "name")
-      .sort({ startDate: 1 })
-      .limit(limit * 1)
+    // Date range filter
+    if (startDate || endDate) {
+      query.startDate = {};
+      if (startDate) query.startDate.$gte = new Date(startDate);
+      if (endDate) query.startDate.$lte = new Date(endDate);
+    }
+
+    // For regular users, only show published events
+    if (!req.user || req.user.role !== "admin") {
+      query.isPublished = true;
+    }
+
+    // Execute query with pagination
+    const events = await Event.find(query)
+      .populate("organizer", "name profilePicture")
+      .sort(sort)
       .skip((page - 1) * limit)
-      .exec();
+      .limit(parseInt(limit));
 
     // Get total count for pagination
-    const count = await Event.countDocuments(queryObject);
+    const totalEvents = await Event.countDocuments(query);
 
     res.status(200).json({
       events,
-      totalPages: Math.ceil(count / limit),
-      currentPage: page,
+      totalPages: Math.ceil(totalEvents / limit),
+      currentPage: parseInt(page),
+      totalEvents,
     });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error("Error getting events:", error);
+    res
+      .status(500)
+      .json({ message: "Failed to get events", error: error.message });
   }
 };
 
-// @desc    Get event by ID
-// @route   GET /api/events/:id
-// @access  Public
-export const getEventById = async (req, res) => {
-  try {
-    const event = await Event.findById(req.params.id).populate(
-      "organizer",
-      "name email"
-    );
-
-    if (event) {
-      // Get registered count for this event
-      const registeredCount = await Registration.countDocuments({
-        event: req.params.id,
-        status: "confirmed",
-      });
-
-      const eventData = event.toObject();
-      eventData.registeredCount = registeredCount;
-
-      res.status(200).json(eventData);
-    } else {
-      res.status(404).json({ message: "Event not found" });
-    }
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
-
-// @desc    Update an event
-// @route   PUT /api/events/:id
-// @access  Private/EventOrganizer
-export const updateEvent = async (req, res) => {
+// Get published events (public route)
+export const getPublishedEvents = async (req, res) => {
   try {
     const {
-      title,
-      description,
-      startDate,
-      endDate,
-      location,
-      capacity,
-      price,
+      page = 1,
+      limit = 10,
+      sort = "-startDate",
       category,
-      isVirtual,
-    } = req.body;
+      featured,
+      search,
+    } = req.query;
 
-    const event = await Event.findById(req.params.id);
+    const query = { isPublished: true };
 
-    if (!event) {
-      return res.status(404).json({ message: "Event not found" });
+    // Apply filters
+    if (category) query.category = category;
+    if (featured === "true") query.featured = true;
+
+    // Search query
+    if (search) {
+      query.$text = { $search: search };
     }
 
-    // Update fields
-    if (title) event.title = title;
-    if (description) event.description = description;
-    if (startDate) event.startDate = startDate;
-    if (endDate) event.endDate = endDate;
-    if (location) event.location = location;
-    if (capacity) event.capacity = capacity;
-    if (price !== undefined) event.price = price;
-    if (category) event.category = category;
-    if (isVirtual !== undefined) event.isVirtual = isVirtual;
+    // Execute query with pagination
+    const events = await Event.find(query)
+      .populate("organizer", "name profilePicture")
+      .sort(sort)
+      .skip((page - 1) * limit)
+      .limit(parseInt(limit));
 
-    const updatedEvent = await event.save();
-    res.status(200).json(updatedEvent);
+    // Get total count for pagination
+    const totalEvents = await Event.countDocuments(query);
+
+    res.status(200).json({
+      events,
+      totalPages: Math.ceil(totalEvents / limit),
+      currentPage: parseInt(page),
+      totalEvents,
+    });
   } catch (error) {
-    res.status(400).json({ message: error.message });
+    console.error("Error getting published events:", error);
+    res
+      .status(500)
+      .json({ message: "Failed to get events", error: error.message });
   }
 };
 
-// @desc    Delete an event
-// @route   DELETE /api/events/:id
-// @access  Private/EventOrganizer
-export const deleteEvent = async (req, res) => {
+// Get single event
+export const getEventById = async (req, res) => {
   try {
-    const event = await Event.findById(req.params.id);
+    const { eventId } = req.params;
+
+    const event = await Event.findById(eventId).populate(
+      "organizer",
+      "name email profilePicture"
+    );
 
     if (!event) {
       return res.status(404).json({ message: "Event not found" });
     }
 
-    // Check if there are existing registrations
-    const registrations = await Registration.countDocuments({
-      event: req.params.id,
+    // If event is not published and requester is not admin or organizer, deny access
+    if (!event.isPublished) {
+      // If no user is logged in or user is not admin or the organizer
+      if (
+        !req.user ||
+        (req.user.role !== "admin" &&
+          req.user._id.toString() !== event.organizer._id.toString())
+      ) {
+        return res
+          .status(403)
+          .json({ message: "This event is not published yet" });
+      }
+    }
+
+    // Get number of registrations
+    const registrationsCount = await Registration.countDocuments({
+      event: eventId,
+      status: "confirmed",
     });
 
-    if (registrations > 0) {
+    // Add attendees count to response
+    const eventResponse = {
+      ...event.toObject(),
+      attendeesCount: registrationsCount,
+    };
+
+    res.status(200).json(eventResponse);
+  } catch (error) {
+    console.error("Error getting event:", error);
+    res
+      .status(500)
+      .json({ message: "Failed to get event", error: error.message });
+  }
+};
+
+// Create new event
+export const createEvent = async (req, res) => {
+  try {
+    // Validate event data
+    const validation = validateEventData(req.body);
+    if (!validation.valid) {
       return res.status(400).json({
-        message:
-          "Cannot delete event with existing registrations. Unpublish it instead.",
+        success: false,
+        message: validation.message,
+        missingFields: validation.missingFields,
       });
     }
 
-    await event.remove();
-    res.status(200).json({ message: "Event removed" });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
+    // Get the validated data from req.validatedData or fall back to req.body
+    const eventData = req.validatedData || req.body;
 
-// @desc    Publish an event
-// @route   POST /api/events/:id/publish
-// @access  Private/EventOrganizer
-export const publishEvent = async (req, res) => {
-  try {
-    const event = await Event.findById(req.params.id);
+    console.log("Creating event with data:", eventData);
 
-    if (!event) {
-      return res.status(404).json({ message: "Event not found" });
+    // Ensure we have organizer ID from the authenticated user
+    const organizerId = req.organizer?._id || req.user?._id;
+    if (!organizerId && !eventData.organizer) {
+      return res.status(400).json({
+        success: false,
+        message: "Organizer ID is required",
+      });
     }
 
-    event.isPublished = true;
-    await event.save();
+    const imagesLocalPath = req.file?.path;
 
-    res.status(200).json({ message: "Event published", event });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
+    let imagesUrl;
 
-// @desc    Unpublish an event
-// @route   POST /api/events/:id/unpublish
-// @access  Private/EventOrganizer
-export const unpublishEvent = async (req, res) => {
-  try {
-    const event = await Event.findById(req.params.id);
-
-    if (!event) {
-      return res.status(404).json({ message: "Event not found" });
+    if (imagesLocalPath) {
+      const images = await uploadOnCloudinary(imagesLocalPath);
+      if (images) {
+        imagesUrl = images.url;
+        console.log("images : ", images);
+      }
     }
+    console.log("imagesUrl : ", imagesUrl);
+    console.log("request files : ", req.file);
+    // Create the event object
+    const newEvent = new Event({
+      ...eventData,
+      images: imagesUrl,
+      organizer: eventData.organizer || organizerId,
+      date:
+        eventData.date || new Date(eventData.startDate).toLocaleDateString(),
+      status: eventData.status || "active",
+    });
 
-    event.isPublished = false;
-    await event.save();
+    console.log("Creating new event:", {
+      title: newEvent.title,
+      status: newEvent.status,
+      organizer: newEvent.organizer,
+    });
 
-    res.status(200).json({ message: "Event unpublished", event });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
+    // Save the event
+    const savedEvent = await newEvent.save();
 
-// @desc    Upload event images
-// @route   POST /api/events/:id/upload-image
-// @access  Private/EventOrganizer
-export const uploadEventImage = async (req, res) => {
-  try {
-    const event = await Event.findById(req.params.id);
-
-    if (!event) {
-      return res.status(404).json({ message: "Event not found" });
-    }
-
-    // Get image paths from upload middleware
-    const imagePaths = req.files.map((file) => file.path);
-
-    // Add new images
-    event.images = [...event.images, ...imagePaths];
-
-    const updatedEvent = await event.save();
-
-    res.status(200).json({
-      message: "Images uploaded",
-      images: updatedEvent.images,
+    return res.status(201).json({
+      success: true,
+      message: "Event created successfully",
+      event: savedEvent,
     });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error("Error creating event:", error);
+
+    // Handle specific errors
+    if (error.name === "ValidationError") {
+      return res.status(400).json({
+        success: false,
+        message: "Validation error",
+        details: Object.keys(error.errors).map((field) => ({
+          field,
+          message: error.errors[field].message,
+        })),
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to create event",
+      error: error.message,
+    });
   }
 };
 
-// @desc    Search events
-// @route   GET /api/events/search
-// @access  Public
+// Update event
+export const updateEvent = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Find event
+    const event = await Event.findById(id);
+
+    if (!event) {
+      return res.status(404).json({ message: "Event not found" });
+    }
+
+    // Check if the user has permission to update this event
+    if (
+      req.organizer &&
+      req.organizer._id.toString() !== event.organizer.toString() &&
+      req.organizer.role !== "admin"
+    ) {
+      return res
+        .status(403)
+        .json({ message: "You don't have permission to update this event" });
+    }
+
+    // Update the event
+    const updatedEvent = await Event.findByIdAndUpdate(
+      id,
+      { $set: req.body },
+      { new: true, runValidators: true }
+    );
+
+    res.status(200).json({
+      message: "Event updated successfully",
+      event: updatedEvent,
+    });
+  } catch (error) {
+    console.error("Error updating event:", error);
+    res
+      .status(500)
+      .json({ message: "Failed to update event", error: error.message });
+  }
+};
+
+// Delete event
+export const deleteEvent = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Find event
+    const event = await Event.findById(id);
+
+    if (!event) {
+      return res.status(404).json({ message: "Event not found" });
+    }
+
+    // Check if the user has permission to delete this event
+    if (
+      req.organizer &&
+      req.organizer._id.toString() !== event.organizer.toString() &&
+      req.organizer.role !== "admin"
+    ) {
+      return res
+        .status(403)
+        .json({ message: "You don't have permission to delete this event" });
+    }
+
+    // Delete any associated images (if storage util exists)
+    if (event.images && event.images.length > 0) {
+      try {
+        for (const imageUrl of event.images) {
+          await deleteFileFromStorage(imageUrl);
+        }
+      } catch (storageError) {
+        console.error("Error removing image files:", storageError);
+      }
+    }
+
+    // Delete the event
+    await Event.findByIdAndDelete(id);
+
+    res.status(200).json({
+      message: "Event deleted successfully",
+    });
+  } catch (error) {
+    console.error("Error deleting event:", error);
+    res
+      .status(500)
+      .json({ message: "Failed to delete event", error: error.message });
+  }
+};
+
+// Upload event images
+export const uploadEventImages = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Check if files were uploaded
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ message: "No files uploaded" });
+    }
+
+    const event = await Event.findById(id);
+
+    if (!event) {
+      return res.status(404).json({ message: "Event not found" });
+    }
+
+    // Check if the user has permission
+    if (
+      req.organizer &&
+      req.organizer._id.toString() !== event.organizer.toString() &&
+      req.organizer.role !== "admin"
+    ) {
+      return res
+        .status(403)
+        .json({ message: "You don't have permission to update this event" });
+    }
+
+    // Upload images and get URLs
+    const imageUrls = [];
+
+    for (const file of req.files) {
+      const imageUrl = await uploadFileToStorage(file, `events/${id}`);
+      imageUrls.push(imageUrl);
+    }
+
+    // Update event with new images
+    const updatedEvent = await Event.findByIdAndUpdate(
+      id,
+      { $push: { images: { $each: imageUrls } } },
+      { new: true }
+    );
+
+    res.status(200).json({
+      message: "Images uploaded successfully",
+      images: imageUrls,
+      event: updatedEvent,
+    });
+  } catch (error) {
+    console.error("Error uploading event images:", error);
+    res
+      .status(500)
+      .json({ message: "Failed to upload images", error: error.message });
+  }
+};
+
+// Get organizer events
+export const getOrganizerEvents = async (req, res) => {
+  try {
+    const organizerId = req.params.organizerId || req.organizer?._id;
+
+    if (!organizerId) {
+      return res.status(400).json({ message: "Organizer ID is required" });
+    }
+
+    // Get events for this organizer
+    const events = await Event.find({ organizer: organizerId }).sort(
+      "-createdAt"
+    );
+
+    res.status(200).json(events);
+  } catch (error) {
+    console.error("Error getting organizer events:", error);
+    res.status(500).json({
+      message: "Failed to get organizer events",
+      error: error.message,
+    });
+  }
+};
+
+// Toggle event feature status (admin only)
+export const toggleFeaturedStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Find event
+    const event = await Event.findById(id);
+
+    if (!event) {
+      return res.status(404).json({ message: "Event not found" });
+    }
+
+    // Toggle featured status
+    event.featured = !event.featured;
+    await event.save();
+
+    res.status(200).json({
+      message: `Event ${
+        event.featured ? "featured" : "unfeatured"
+      } successfully`,
+      featured: event.featured,
+    });
+  } catch (error) {
+    console.error("Error toggling featured status:", error);
+    res.status(500).json({
+      message: "Failed to update featured status",
+      error: error.message,
+    });
+  }
+};
+
+// Add social interactions
+export const updateSocialInteractions = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { action } = req.body;
+
+    // Find event
+    const event = await Event.findById(id);
+
+    if (!event) {
+      return res.status(404).json({ message: "Event not found" });
+    }
+
+    // Initialize social share object if it doesn't exist
+    if (!event.socialShare) {
+      event.socialShare = { likes: 0, comments: 0, shares: 0 };
+    }
+
+    // Update the appropriate counter
+    switch (action) {
+      case "like":
+        event.socialShare.likes += 1;
+        break;
+      case "comment":
+        event.socialShare.comments += 1;
+        break;
+      case "share":
+        event.socialShare.shares += 1;
+        break;
+      default:
+        return res.status(400).json({ message: "Invalid action" });
+    }
+
+    await event.save();
+
+    res.status(200).json({
+      message: `Event ${action} updated successfully`,
+      socialShare: event.socialShare,
+    });
+  } catch (error) {
+    console.error("Error updating social interactions:", error);
+    res.status(500).json({
+      message: "Failed to update social interactions",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Search events based on various criteria
+ * @route GET /api/v1/events/search
+ * @access Public
+ */
 export const searchEvents = async (req, res) => {
   try {
     const {
-      keyword,
+      query,
+      category,
       startDate,
       endDate,
-      category,
+      location,
+      price,
       page = 1,
       limit = 10,
     } = req.query;
 
-    // Build query object
-    const queryObject = { isPublished: true };
+    // Build the search filter
+    const filter = {
+      status: "active", // Only return published/active events
+    };
 
-    // Search by keyword in title or description
-    if (keyword) {
-      queryObject.$or = [
-        { title: { $regex: keyword, $options: "i" } },
-        { description: { $regex: keyword, $options: "i" } },
-      ];
-    }
-
-    // Filter by date range
-    if (startDate || endDate) {
-      queryObject.startDate = {};
-
-      if (startDate) {
-        queryObject.startDate.$gte = new Date(startDate);
-      }
-
-      if (endDate) {
-        queryObject.endDate = { $lte: new Date(endDate) };
-      }
+    // Free text search across multiple fields if query parameter is provided
+    if (query) {
+      filter.$text = { $search: query };
     }
 
     // Filter by category
     if (category) {
-      queryObject.category = category;
+      filter.category = category;
     }
 
-    // Execute query with pagination
-    const events = await Event.find(queryObject)
-      .populate("organizer", "name")
-      .sort({ startDate: 1 })
-      .limit(limit * 1)
-      .skip((page - 1) * limit)
-      .exec();
+    // Filter by date range
+    if (startDate || endDate) {
+      filter.startDate = {};
+      if (startDate) filter.startDate.$gte = new Date(startDate);
+      if (endDate) filter.startDate.$lte = new Date(endDate);
+    }
 
-    // Get total count for pagination
-    const count = await Event.countDocuments(queryObject);
+    // Filter by location (partial match)
+    if (location) {
+      filter.$or = [
+        { "location.city": { $regex: location, $options: "i" } },
+        { "location.country": { $regex: location, $options: "i" } },
+        { "location.state": { $regex: location, $options: "i" } },
+      ];
+    }
+
+    // Filter by price range
+    if (price === "free") {
+      filter.isPaid = false;
+    } else if (price === "paid") {
+      filter.isPaid = true;
+    }
+
+    // Calculate pagination
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const limitNum = parseInt(limit);
+
+    // Execute query with pagination
+    const events = await Event.find(filter)
+      .sort({ startDate: 1 }) // Sort by upcoming events
+      .skip(skip)
+      .limit(limitNum)
+      .populate("organizer", "name email organization");
+
+    // Get total count for pagination info
+    const totalEvents = await Event.countDocuments(filter);
 
     res.status(200).json({
+      success: true,
+      count: events.length,
+      total: totalEvents,
+      totalPages: Math.ceil(totalEvents / limitNum),
+      currentPage: parseInt(page),
       events,
-      totalPages: Math.ceil(count / limit),
-      currentPage: page,
     });
   } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
-
-export const listPublicEvents = async (req, res) => {
-  try {
-    // Logic to list all public events
-    res.status(200).json({ message: "List of public events" });
-  } catch (error) {
-    res.status(500).json({ error: "Failed to list public events" });
-  }
-};
-
-export const getEventDetails = async (req, res) => {
-  try {
-    const { id } = req.params;
-    // Logic to get specific event details
-    res.status(200).json({ message: `Details of event ${id}` });
-  } catch (error) {
-    res.status(500).json({ error: "Failed to get event details" });
-  }
-};
-
-export const getEventAttendees = async (req, res) => {
-  try {
-    const { eventId } = req.params;
-    // Logic to get event attendees
-    res.status(200).json({ message: `Attendees of event ${eventId}` });
-  } catch (error) {
-    res.status(500).json({ error: "Failed to get event attendees" });
-  }
-};
-
-export const createTicketType = async (req, res) => {
-  try {
-    const { eventId } = req.params;
-    // Logic to create ticket types
-    res
-      .status(201)
-      .json({ message: `Ticket type created for event ${eventId}` });
-  } catch (error) {
-    res.status(500).json({ error: "Failed to create ticket type" });
+    console.error("Error searching events:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error while searching events",
+      error: error.message,
+    });
   }
 };
