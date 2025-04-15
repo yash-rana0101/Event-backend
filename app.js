@@ -137,7 +137,7 @@ app.use((err, req, res, next) => {
     status: "error",
     message: err.message || "Internal server error",
   });
-});
+}); 
 
 // 404 handler
 app.use((req, res) => {

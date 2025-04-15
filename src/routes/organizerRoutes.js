@@ -7,6 +7,7 @@ import asyncHandler from "../utils/asyncHandler.js";
 import { getOrganizerEvents } from "../controllers/eventController.js";
 // Import the organizerModel
 import organizerModel from "../models/organizerModel.js";
+import Event from "../models/Event.js";
 
 const router = Router();
 
@@ -152,9 +153,9 @@ router.get("/my-events", asyncHandler(organizerController.getOrganizerEvents));
 router.get(
   "/events/organizer/:organizerId",
   verifyOrganizerToken,
-  asyncHandler(async (req, res) => {
+  asyncHandler(async (req, res, next) => {
     const { organizerId } = req.params;
-
+    console.log("Current organizer ID:", req.organizer._id.toString());
     if (!organizerId || organizerId !== req.organizer._id.toString()) {
       return res
         .status(403)
@@ -165,6 +166,8 @@ router.get(
       "organizer",
       "name email"
     );
+
+    console.log("Fetched events:", events);
     res.status(200).json(events);
   })
 );

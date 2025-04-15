@@ -144,11 +144,17 @@ const EventSchema = new mongoose.Schema(
       ],
       default: "other",
     },
-    images: [
-      {
-        type: String,
+    image: {
+      type: String,
+      default: "",
+      validate: {
+        validator: function (v) {
+          // Allow empty string or valid string
+          return v === "" || typeof v === "string";
+        },
+        message: (props) => `${props.value} is not a valid image URL`,
       },
-    ],
+    },
     featured: {
       type: Boolean,
       default: false,
@@ -166,10 +172,101 @@ const EventSchema = new mongoose.Schema(
       type: String,
       default: "USD",
     },
-    timeline: [timelineItemSchema],
-    prizes: [prizeSchema],
-    sponsors: [sponsorSchema],
-    faqs: [faqSchema],
+    timeline: {
+      type: [
+        {
+          time: String,
+          event: String,
+        },
+      ],
+      default: [],
+      validate: {
+        validator: function (v) {
+          // Ensure it's an array and every item has time and event properties
+          if (!Array.isArray(v)) return false;
+          return v.every(
+            (item) =>
+              item &&
+              typeof item === "object" &&
+              typeof item.time === "string" &&
+              typeof item.event === "string"
+          );
+        },
+        message: "Timeline items must contain time and event properties",
+      },
+    },
+    prizes: {
+      type: [
+        {
+          place: String,
+          amount: String,
+          description: String,
+        },
+      ],
+      default: [],
+      validate: {
+        validator: function (v) {
+          // Ensure it's an array and every item has place and amount properties
+          if (!Array.isArray(v)) return false;
+          return v.every(
+            (item) =>
+              item &&
+              typeof item === "object" &&
+              typeof item.place === "string" &&
+              typeof item.amount === "string"
+          );
+        },
+        message: "Prize items must contain place and amount properties",
+      },
+    },
+    sponsors: {
+      type: [
+        {
+          name: String,
+          tier: {
+            type: String,
+            enum: ["platinum", "gold", "silver", "bronze", "other"],
+            default: "other",
+          },
+          logo: String,
+        },
+      ],
+      default: [],
+      validate: {
+        validator: function (v) {
+          // Ensure it's an array and every item has name property
+          if (!Array.isArray(v)) return false;
+          return v.every(
+            (item) =>
+              item && typeof item === "object" && typeof item.name === "string"
+          );
+        },
+        message: "Sponsor items must contain name property",
+      },
+    },
+    faqs: {
+      type: [
+        {
+          question: String,
+          answer: String,
+        },
+      ],
+      default: [],
+      validate: {
+        validator: function (v) {
+          // Ensure it's an array and every item has question and answer properties
+          if (!Array.isArray(v)) return false;
+          return v.every(
+            (item) =>
+              item &&
+              typeof item === "object" &&
+              typeof item.question === "string" &&
+              typeof item.answer === "string"
+          );
+        },
+        message: "FAQ items must contain question and answer properties",
+      },
+    },
     tags: [String],
     socialShare: {
       type: socialShareSchema,

@@ -4,6 +4,7 @@ import mongoose from "mongoose";
 const eventOrganizerMiddleware = async (req, res, next) => {
   try {
     const eventId = req.params.id || req.params.eventId;
+    console.log("Event ID from request:", eventId);
 
     if (!mongoose.Types.ObjectId.isValid(eventId)) {
       return res.status(400).json({ message: "Invalid event ID" });

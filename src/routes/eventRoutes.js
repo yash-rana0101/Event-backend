@@ -1,7 +1,12 @@
 import { Router } from "express";
-import { authMiddleware } from "../middlewares/authMiddleware.js";
 import { validate } from "../middlewares/validationMiddleware.js";
-import * as eventController from "../controllers/eventController.js";
+// Fix the import - import verifyOrganizerToken from authMiddleware instead
+import {
+  verifyOrganizerToken,
+  authMiddleware,
+} from "../middlewares/authMiddleware.js";
+import { fileUpload } from "../middlewares/uploadMiddleware.js";
+import { createEvent } from "../controllers/eventController.js";
 import Event from "../models/Event.js";
 
 const router = Router();
@@ -203,52 +208,36 @@ router.get("/", async (req, res) => {
 });
 
 // Public route to get a specific event
-router.get("/:id", async (req, res) => {
+router.get("/:eventId", async (req, res) => {
   try {
-    const event = await Event.findById(req.params.id).populate(
-      "organizer",
-      "name email profilePicture"
-    );
+    const { eventId } = req.params;
+
+    if (!eventId) {
+      return res.status(400).json({ message: "Event ID is required." });
+    }
+
+    const event = await Event.findById(eventId);
 
     if (!event) {
-      return res.status(404).json({ message: "Event not found" });
+      return res.status(404).json({ message: "Event not found." });
     }
 
     res.status(200).json(event);
   } catch (error) {
-    console.error("Error getting event by ID:", error);
-    res.status(500).json({
-      message: "Error fetching event",
-      error: error.message,
-    });
+    console.error("Error fetching event:", error);
+    res.status(500).json({ message: "Failed to fetch event details." });
   }
 });
 
 // Protected routes (require authentication)
 router.use(authMiddleware);
 
-router.post("/", validate("event"), async (req, res) => {
-  try {
-    const eventData = {
-      ...req.body,
-      organizer: req.user._id,
-    };
-
-    const event = await Event.create(eventData);
-
-    res.status(201).json({
-      success: true,
-      message: "Event created successfully",
-      data: event,
-    });
-  } catch (error) {
-    console.error("Error creating event:", error);
-    res.status(400).json({
-      success: false,
-      message: error.message,
-    });
-  }
-});
+router.post(
+  "/",
+  verifyOrganizerToken,
+  fileUpload.fields([{ name: "images", maxCount: 1 }]),
+  createEvent
+);
 
 router.put("/:id", validate("event"), async (req, res) => {
   try {

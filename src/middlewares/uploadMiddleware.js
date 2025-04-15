@@ -29,6 +29,24 @@ createDirIfNotExists(eventImagesDir);
 createDirIfNotExists(profileImagesDir);
 createDirIfNotExists(tempUploadsDir);
 
+// File filter to allow only images
+const fileFilter = (req, file, cb) => {
+  // Accepted image types
+  const allowedTypes = [
+    "image/jpeg",
+    "image/jpg",
+    "image/png",
+    "image/gif",
+    "image/webp",
+  ];
+
+  if (allowedTypes.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(new Error("Only image files are allowed!"), false);
+  }
+};
+
 // Configure storage for different file types
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
@@ -49,23 +67,14 @@ const storage = multer.diskStorage({
   },
 });
 
-// File filter to allow only images
-const fileFilter = (req, file, cb) => {
-  // Accepted image types
-  const allowedTypes = [
-    "image/jpeg",
-    "image/jpg",
-    "image/png",
-    "image/gif",
-    "image/webp",
-  ];
-
-  if (allowedTypes.includes(file.mimetype)) {
-    cb(null, true);
-  } else {
-    cb(new Error("Only image files are allowed!"), false);
-  }
-};
+// Export a specific upload middleware for event image
+export const eventImageUpload = multer({
+  storage: storage,
+  fileFilter: fileFilter,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB max file size
+  },
+}).single("image"); // Using 'image' as field name for single image
 
 // Create the multer upload instance
 export const fileUpload = multer({

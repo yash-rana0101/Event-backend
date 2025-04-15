@@ -101,7 +101,7 @@ export const verifyOrganizerToken = async (req, res, next) => {
   try {
     // Get token from header
     const token = getTokenFromHeader(req);
-
+    console.log("hii");
     if (!token) {
       return res.status(401).json({
         message: "No token provided",
@@ -136,6 +136,7 @@ export const verifyOrganizerToken = async (req, res, next) => {
     req.user = organizer;
     req.organizer = organizer;
     req.userType = "organizer";
+    console.log("organizer", req.organizer);
     next();
   } catch (error) {
     console.error("Organizer auth middleware error:", error);
