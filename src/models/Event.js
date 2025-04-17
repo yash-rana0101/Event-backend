@@ -144,17 +144,10 @@ const EventSchema = new mongoose.Schema(
       ],
       default: "other",
     },
-    image: {
-      type: String,
-      default: "",
-      validate: {
-        validator: function (v) {
-          // Allow empty string or valid string
-          return v === "" || typeof v === "string";
-        },
-        message: (props) => `${props.value} is not a valid image URL`,
-      },
-    },
+    // image: {
+    //   type: String,
+    //   default: "",
+    // },
     featured: {
       type: Boolean,
       default: false,

@@ -195,18 +195,8 @@ export const getEventById = async (req, res) => {
 // Create new event
 export const createEvent = async (req, res) => {
   try {
-    // Validate event data
-    const validation = validateEventData(req.body);
-    if (!validation.valid) {
-      return res.status(400).json({
-        success: false,
-        message: validation.message,
-        missingFields: validation.missingFields,
-      });
-    }
-
     // Get the validated data from req.validatedData or fall back to req.body
-    const eventData = req.validatedData || req.body;
+    const eventData = req.body;
 
     console.log("Creating event with data:", eventData);
 
@@ -219,23 +209,21 @@ export const createEvent = async (req, res) => {
       });
     }
 
-    const imagesLocalPath = req.file?.path;
+    // const imagesLocalPath = req.file?.path;
 
-    let imagesUrl;
+    // let imagesUrl;
 
-    if (imagesLocalPath) {
-      const images = await uploadOnCloudinary(imagesLocalPath);
-      if (images) {
-        imagesUrl = images.url;
-        console.log("images : ", images);
-      }
-    }
-    console.log("imagesUrl : ", imagesUrl);
-    console.log("request files : ", req.file);
+    // if (imagesLocalPath) {
+    //   const images = await uploadOnCloudinary(imagesLocalPath);
+    //   if (images) {
+    //     imagesUrl = images.url;
+    //     console.log("images : ", images);
+    //   }
+    // }
+    
     // Create the event object
     const newEvent = new Event({
       ...eventData,
-      images: imagesUrl,
       organizer: eventData.organizer || organizerId,
       date:
         eventData.date || new Date(eventData.startDate).toLocaleDateString(),
