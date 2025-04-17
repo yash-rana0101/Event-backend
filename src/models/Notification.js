@@ -4,7 +4,7 @@ const NotificationSchema = new mongoose.Schema({
   recipient: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "User",
-    required: [true, "Please provide recipient user"],
+    required: true,
   },
   type: {
     type: String,
@@ -12,36 +12,38 @@ const NotificationSchema = new mongoose.Schema({
       "event_reminder",
       "registration_confirmation",
       "event_update",
-      "payment_confirmation",
+      "event_notification",
+      "admin_notification",
+      "new_event",
       "system",
     ],
-    required: [true, "Please provide notification type"],
+    required: true,
   },
   title: {
     type: String,
-    required: [true, "Please provide notification title"],
+    required: true,
   },
   message: {
     type: String,
-    required: [true, "Please provide notification message"],
+    required: true,
   },
   relatedEvent: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Event",
     required: false,
   },
-  isRead: {
+  read: {
     type: Boolean,
     default: false,
+  },
+  readAt: {
+    type: Date,
   },
   createdAt: {
     type: Date,
     default: Date.now,
   },
 });
-
-// Create index for faster queries on recipient and read status
-NotificationSchema.index({ recipient: 1, isRead: 1 });
 
 const Notification = mongoose.model("Notification", NotificationSchema);
 export default Notification;

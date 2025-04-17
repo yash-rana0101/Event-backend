@@ -19,6 +19,7 @@ import reportRoutes from "./src/routes/reportRoutes.js";
 import memberRoutes from "./src/routes/memberRoutes.js";
 import teamRoutes from "./src/routes/teamRoutes.js";
 import organizerRoutes from "./src/routes/organizerRoutes.js";
+import userProfileRoutes from "./src/routes/userProfileRoutes.js";
 
 // Import middleware
 import { authMiddleware } from "./src/middlewares/authMiddleware.js"; // Import as named export
@@ -73,6 +74,7 @@ app.use("/api/v1/notifications", notificationRoutes);
 app.use("/api/v1/reports", reportRoutes);
 app.use("/api/v1/members", memberRoutes);
 app.use("/api/v1/teams", teamRoutes);
+app.use("/api/v1/profiles", userProfileRoutes);
 
 // Health check route
 app.get("/health", async (req, res) => {
