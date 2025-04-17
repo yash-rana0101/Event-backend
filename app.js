@@ -106,7 +106,7 @@ app.get("/api/v1/db-status", (req, res) => {
 // Root route
 app.get("/", (req, res) => {
   res.status(200).json({
-    message: "Welcome to Cyber Hunter Event API",
+    message: "Welcome to Event System Event API",
     version: "1.0.0",
     documentation: "/api-docs",
   });
@@ -137,7 +137,7 @@ app.use((err, req, res, next) => {
     status: "error",
     message: err.message || "Internal server error",
   });
-}); 
+});
 
 // 404 handler
 app.use((req, res) => {

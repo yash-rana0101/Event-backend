@@ -1,7 +1,7 @@
 {
   "name": "api",
   "version": "1.0.0",
-  "description": "API for Cyber Hunter Event System",
+  "description": "API for Event System Event System",
   "main": "index.js",
   "type": "module",
   "scripts": {

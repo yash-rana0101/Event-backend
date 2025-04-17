@@ -38,13 +38,13 @@ export const sendEmail = async (options) => {
 export const sendWelcomeEmail = async (user) => {
   const options = {
     email: user.email,
-    subject: "Welcome to Cyber Hunter Events!",
-    message: `Hi ${user.name},\n\nWelcome to Cyber Hunter Events! We're excited to have you on board.\n\nBest regards,\nThe Cyber Hunter Events Team`,
+    subject: "Welcome to Event System Events!",
+    message: `Hi ${user.name},\n\nWelcome to Event System Events! We're excited to have you on board.\n\nBest regards,\nThe Event System Events Team`,
     html: `
-      <h1>Welcome to Cyber Hunter Events!</h1>
+      <h1>Welcome to Event System Events!</h1>
       <p>Hi ${user.name},</p>
       <p>We're excited to have you on board. Get ready for amazing cyber security events!</p>
-      <p>Best regards,<br>The Cyber Hunter Events Team</p>
+      <p>Best regards,<br>The Event System Events Team</p>
     `,
   };
 
@@ -58,18 +58,24 @@ export const sendRegistrationConfirmationEmail = async (user, event) => {
   const options = {
     email: user.email,
     subject: `Registration Confirmation: ${event.title}`,
-    message: `Hi ${user.name},\n\nYour registration for ${event.title} has been confirmed. The event will take place on ${new Date(event.startDate).toLocaleDateString()}.\n\nBest regards,\nThe Cyber Hunter Events Team`,
+    message: `Hi ${user.name},\n\nYour registration for ${
+      event.title
+    } has been confirmed. The event will take place on ${new Date(
+      event.startDate
+    ).toLocaleDateString()}.\n\nBest regards,\nThe Event System Events Team`,
     html: `
       <h1>Registration Confirmation</h1>
       <p>Hi ${user.name},</p>
-      <p>Your registration for <strong>${event.title}</strong> has been confirmed.</p>
+      <p>Your registration for <strong>${
+        event.title
+      }</strong> has been confirmed.</p>
       <p>Event details:</p>
       <ul>
         <li>Date: ${new Date(event.startDate).toLocaleDateString()}</li>
         <li>Time: ${new Date(event.startDate).toLocaleTimeString()}</li>
         <li>Location: ${event.location}</li>
       </ul>
-      <p>Best regards,<br>The Cyber Hunter Events Team</p>
+      <p>Best regards,<br>The Event System Events Team</p>
     `,
   };
 
@@ -83,7 +89,7 @@ export const sendPasswordResetEmail = async (user, resetUrl) => {
   const options = {
     email: user.email,
     subject: "Password Reset Request",
-    message: `Hi ${user.name},\n\nYou requested a password reset. Please use the following link to reset your password: ${resetUrl}\n\nIf you didn't request this, please ignore this email.\n\nBest regards,\nThe Cyber Hunter Events Team`,
+    message: `Hi ${user.name},\n\nYou requested a password reset. Please use the following link to reset your password: ${resetUrl}\n\nIf you didn't request this, please ignore this email.\n\nBest regards,\nThe Event System Events Team`,
     html: `
       <h1>Password Reset Request</h1>
       <p>Hi ${user.name},</p>
@@ -94,7 +100,7 @@ export const sendPasswordResetEmail = async (user, resetUrl) => {
         </a>
       </p>
       <p>If you didn't request this, please ignore this email.</p>
-      <p>Best regards,<br>The Cyber Hunter Events Team</p>
+      <p>Best regards,<br>The Event System Events Team</p>
     `,
   };
 
@@ -108,13 +114,13 @@ export const sendTeamInvitationEmail = async (invitee, team, inviter) => {
   const options = {
     email: invitee.email,
     subject: `Team Invitation: ${team.name}`,
-    message: `Hi ${invitee.name},\n\nYou have been invited to join the team "${team.name}" by ${inviter.name}. Please log in to your account to accept or decline this invitation.\n\nBest regards,\nThe Cyber Hunter Events Team`,
+    message: `Hi ${invitee.name},\n\nYou have been invited to join the team "${team.name}" by ${inviter.name}. Please log in to your account to accept or decline this invitation.\n\nBest regards,\nThe Event System Events Team`,
     html: `
       <h1>Team Invitation</h1>
       <p>Hi ${invitee.name},</p>
       <p>You have been invited to join the team <strong>"${team.name}"</strong> by ${inviter.name}.</p>
       <p>Please log in to your account to accept or decline this invitation.</p>
-      <p>Best regards,<br>The Cyber Hunter Events Team</p>
+      <p>Best regards,<br>The Event System Events Team</p>
     `,
   };
 
