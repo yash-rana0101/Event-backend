@@ -1,63 +1,38 @@
 import { Router } from "express";
 import { authMiddleware } from "../middlewares/authMiddleware.js";
-import { validate } from "../middlewares/validationMiddleware.js";
+import registrationController from "../controllers/registrationController.js";
 import asyncHandler from "../utils/asyncHandler.js";
 
 const router = Router();
 
-// Public registration routes
-router.post(
-  "/events/:eventId/register",
-  validate("registration"),
-  asyncHandler(async (req, res) => {
-    // Registration logic
-    res.status(201).json({ message: "Registration successful" });
-  })
-);
-
-// Protected routes - use authMiddleware directly as a function, not as an object
+// All registration routes need authentication
 router.use(authMiddleware);
 
-// User registration management
+// Register for an event
+router.post(
+  "/events/:eventId",
+  asyncHandler(registrationController.registerForEvent)
+);
+
+// Cancel registration
+router.delete(
+  "/events/:eventId",
+  asyncHandler(registrationController.cancelRegistration)
+);
+
+// Reactivate a cancelled registration
+router.patch(
+  "/events/:eventId/reactivate",
+  asyncHandler(registrationController.reactivateRegistration)
+);
+
+// Check if user is registered for an event
 router.get(
-  "/my-registrations",
-  asyncHandler(async (req, res) => {
-    // Get user's registrations
-    res.json({ registrations: [] });
-  })
+  "/check/:eventId",
+  asyncHandler(registrationController.checkRegistration)
 );
 
-router.get(
-  "/:registrationId",
-  asyncHandler(async (req, res) => {
-    // Get specific registration details
-    res.json({ registration: {} });
-  })
-);
-
-router.put(
-  "/:registrationId/cancel",
-  asyncHandler(async (req, res) => {
-    // Cancel registration logic
-    res.json({ message: "Registration cancelled" });
-  })
-);
-
-// Event organizer routes
-router.get(
-  "/events/:eventId/registrations",
-  asyncHandler(async (req, res) => {
-    // Get all registrations for an event
-    res.json({ registrations: [] });
-  })
-);
-
-router.put(
-  "/:registrationId/check-in",
-  asyncHandler(async (req, res) => {
-    // Check-in logic
-    res.json({ message: "Check-in successful" });
-  })
-);
+// Get user's registrations
+router.get("/", asyncHandler(registrationController.getUserRegistrations));
 
 export default router;

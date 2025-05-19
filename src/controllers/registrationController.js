@@ -1,15 +1,19 @@
 import Registration from "../models/Registration.js";
 import Event from "../models/Event.js";
-import { sendEmail } from "../utils/emailService.js";
+import User from "../models/User.js";
 import Notification from "../models/Notification.js";
+import mongoose from "mongoose";
 
-// @desc    Register user for event
-// @route   POST /api/v1/registrations/events/:eventId
-// @access  Private
+// Register for an event
 export const registerForEvent = async (req, res) => {
   try {
-    const eventId = req.params.eventId;
-    const userId = req.user.userId;
+    const { eventId } = req.params;
+    const userId = req.user._id;
+
+    // Validate event ID
+    if (!mongoose.Types.ObjectId.isValid(eventId)) {
+      return res.status(400).json({ message: "Invalid event ID format" });
+    }
 
     // Check if event exists
     const event = await Event.findById(eventId);
@@ -17,34 +21,29 @@ export const registerForEvent = async (req, res) => {
       return res.status(404).json({ message: "Event not found" });
     }
 
-    // Check if event is published
-    if (!event.isPublished) {
+    // Check if event registration is open
+    if (event.status === "cancelled") {
       return res
         .status(400)
-        .json({ message: "Cannot register for unpublished event" });
+        .json({ message: "Registration is closed for this event" });
     }
 
-    // Check if registration date has passed
-    if (new Date(event.date) < new Date()) {
-      return res.status(400).json({ message: "Event has already occurred" });
-    }
-
-    // Check if user is already registered
+    // Check if user already registered
     const existingRegistration = await Registration.findOne({
       event: eventId,
       user: userId,
     });
-
     if (existingRegistration) {
       return res
-        .status(400)
-        .json({ message: "User already registered for this event" });
+        .status(409)
+        .json({ message: "You are already registered for this event" });
     }
 
-    // Check if event has reached capacity
-    if (event.capacity > 0) {
+    // Check if event has capacity limit and if it's reached
+    if (event.capacity) {
       const registrationsCount = await Registration.countDocuments({
         event: eventId,
+        status: { $ne: "cancelled" },
       });
       if (registrationsCount >= event.capacity) {
         return res
@@ -54,52 +53,51 @@ export const registerForEvent = async (req, res) => {
     }
 
     // Create registration
-    const registration = await Registration.create({
-      event: eventId,
+    const registration = new Registration({
       user: userId,
-      status: event.isPaid ? "pending" : "confirmed",
-      paymentStatus: event.isPaid ? "pending" : "not_applicable",
+      event: eventId,
+      status: "confirmed",
+      paymentStatus: event.isPaid ? "pending" : "free",
+      ticketPrice: event.price || 0,
     });
 
-    // If event is free, confirm immediately
-    if (!event.isPaid) {
-      // Create notification for user
-      await Notification.create({
-        recipient: userId,
-        type: "registration_confirmation",
-        title: "Registration Confirmed",
-        message: `Your registration for ${event.title} has been confirmed.`,
-        relatedEvent: eventId,
-      });
+    await registration.save();
 
-      // Send confirmation email
-      await sendEmail({
-        email: req.user.email,
-        subject: `Registration Confirmed: ${event.title}`,
-        message: `Thank you for registering for ${event.title} on ${new Date(event.date).toLocaleDateString()}. We look forward to seeing you!`,
-      });
-    }
+    // Create notification for the user
+    const notification = new Notification({
+      recipient: userId,
+      type: "registration_confirmation",
+      title: "Registration Confirmed",
+      message: `You have successfully registered for ${event.title}`,
+      relatedEvent: eventId,
+    });
 
+    await notification.save();
+
+    // Return success response
     res.status(201).json({
-      message: event.isPaid
-        ? "Registration pending payment"
-        : "Registration confirmed",
-      registration,
+      message: "Successfully registered for the event",
+      registration: {
+        id: registration._id,
+        status: registration.status,
+        registrationDate: registration.registrationDate,
+      },
     });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error("Error registering for event:", error);
+    res.status(500).json({
+      message: "Failed to register for event",
+      error: error.message,
+    });
   }
 };
 
-// @desc    Cancel registration
-// @route   DELETE /api/v1/registrations/events/:eventId
-// @access  Private
+// Cancel registration
 export const cancelRegistration = async (req, res) => {
   try {
-    const eventId = req.params.eventId;
-    const userId = req.user.userId;
+    const { eventId } = req.params;
+    const userId = req.user._id;
 
-    // Find the registration
     const registration = await Registration.findOne({
       event: eventId,
       user: userId,
@@ -109,215 +107,149 @@ export const cancelRegistration = async (req, res) => {
       return res.status(404).json({ message: "Registration not found" });
     }
 
-    // Get event details to check date
-    const event = await Event.findById(eventId);
-    if (!event) {
-      return res.status(404).json({ message: "Event not found" });
-    }
-
-    // Check if cancellation is allowed (e.g., not too close to event date)
-    const eventDate = new Date(event.date);
-    const currentDate = new Date();
-    const timeUntilEvent = eventDate.getTime() - currentDate.getTime();
-    const daysUntilEvent = timeUntilEvent / (1000 * 3600 * 24);
-
-    // If less than 24 hours until event, prevent cancellation
-    if (daysUntilEvent < 1) {
-      return res.status(400).json({
-        message: "Cannot cancel registration less than 24 hours before event",
-      });
-    }
-
-    // Update registration status
     registration.status = "cancelled";
     await registration.save();
 
-    // Create notification
-    await Notification.create({
-      recipient: userId,
-      type: "event_update",
-      title: "Registration Cancelled",
-      message: `Your registration for ${event.title} has been cancelled.`,
-      relatedEvent: eventId,
+    res.status(200).json({
+      message: "Registration cancelled successfully",
+      registration: {
+        id: registration._id,
+        status: registration.status,
+      },
     });
-
-    // Send cancellation email
-    await sendEmail({
-      email: req.user.email,
-      subject: `Registration Cancelled: ${event.title}`,
-      message: `Your registration for ${event.title} on ${eventDate.toLocaleDateString()} has been cancelled.`,
-    });
-
-    res.status(200).json({ message: "Registration cancelled successfully" });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error("Error cancelling registration:", error);
+    res.status(500).json({
+      message: "Failed to cancel registration",
+      error: error.message,
+    });
   }
 };
 
-// @desc    Get user registrations
-// @route   GET /api/v1/registrations/user
-// @access  Private
+/**
+ * Check if user is registered for an event
+ * @route GET /api/v1/registrations/check/:eventId
+ * @access Private
+ */
+const checkRegistration = async (req, res) => {
+  const { eventId } = req.params;
+  const userId = req.user._id;
+
+  const registration = await Registration.findOne({
+    user: userId,
+    event: eventId
+  });
+
+  if (registration) {
+    res.json({
+      isRegistered: true,
+      status: registration.status, // Include status in the response
+      registrationId: registration._id
+    });
+  } else {
+    res.json({
+      isRegistered: false
+    });
+  }
+};
+
+/**
+ * Get user's registrations
+ * @route GET /api/v1/registrations/me
+ * @access Private
+ */
 export const getUserRegistrations = async (req, res) => {
   try {
-    const userId = req.user.userId;
-    const { status } = req.query;
+    const userId = req.user._id;
 
-    // Build filter
-    const filter = { user: userId };
-    if (status) {
-      filter.status = status;
-    }
-
-    const registrations = await Registration.find(filter)
-      .populate({
-        path: "event",
-        select: "title description date time location images",
-      })
+    const registrations = await Registration.find({ user: userId })
+      .populate("event", "title date startDate location status")
       .sort({ registrationDate: -1 });
 
     res.status(200).json(registrations);
   } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
-
-// @desc    Get event registrations
-// @route   GET /api/v1/registrations/events/:eventId
-// @access  Private/Organizer/Admin
-export const getEventRegistrations = async (req, res) => {
-  try {
-    const eventId = req.params.eventId;
-    const { status, page = 1, limit = 20 } = req.query;
-
-    // Build filter
-    const filter = { event: eventId };
-    if (status) {
-      filter.status = status;
-    }
-
-    // Count total documents
-    const total = await Registration.countDocuments(filter);
-
-    // Find registrations with pagination
-    const registrations = await Registration.find(filter)
-      .populate({
-        path: "user",
-        select: "name email phone",
-      })
-      .sort({ registrationDate: -1 })
-      .limit(limit * 1)
-      .skip((page - 1) * limit)
-      .exec();
-
-    res.status(200).json({
-      registrations,
-      totalPages: Math.ceil(total / limit),
-      currentPage: page,
-      totalRegistrations: total,
+    console.error("Error getting user registrations:", error);
+    res.status(500).json({
+      message: "Failed to get registrations",
+      error: error.message,
     });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
   }
 };
 
-// @desc    Update registration status
-// @route   PUT /api/v1/registrations/:id/status
-// @access  Private/Organizer/Admin
-export const updateRegistrationStatus = async (req, res) => {
-  try {
-    const { status } = req.body;
+/**
+ * Reactivate a previously cancelled registration
+ * @route PATCH /api/v1/registrations/events/:eventId/reactivate
+ * @access Private
+ */
+const reactivateRegistration = async (req, res) => {
+  const { eventId } = req.params;
+  const userId = req.user._id;
 
-    if (!["pending", "confirmed", "cancelled"].includes(status)) {
-      return res.status(400).json({ message: "Invalid status" });
-    }
+  // Find the event
+  const event = await Event.findById(eventId);
+  if (!event) {
+    return res.status(404).json({ message: "Event not found" });
+  }
 
-    const registration = await Registration.findById(req.params.id)
-      .populate("user", "email")
-      .populate("event", "title date");
+  // Check if registration deadline has passed
+  if (event.registrationDeadline && new Date(event.registrationDeadline) < new Date()) {
+    return res.status(400).json({ message: "Registration deadline has passed" });
+  }
 
-    if (!registration) {
-      return res.status(404).json({ message: "Registration not found" });
-    }
+// Check if event capacity is full (if applicable)
+if (event.capacity) {
+  const activeRegistrationsCount = await Registration.countDocuments({
+    event: eventId,
+    status: { $in: ["confirmed", "attended"] }
+  });
+  
+  if (activeRegistrationsCount >= event.capacity) {
+    return res.status(400).json({ message: "Event has reached maximum capacity" });
+  }
+}
 
-    registration.status = status;
+// Find existing registration (even if cancelled)
+  let registration = await Registration.findOne({
+    user: userId,
+    event: eventId
+  });
 
-    // If confirmed, update attendance tracking
-    if (status === "confirmed") {
-      registration.paymentStatus = "completed";
-    }
+  if (!registration) {
+    return res.status(404).json({ message: "No previous registration found" });
+  }
 
-    await registration.save();
-
-    // Create notification
-    await Notification.create({
-      recipient: registration.user._id,
-      type: "registration_confirmation",
-      title: `Registration ${status.charAt(0).toUpperCase() + status.slice(1)}`,
-      message: `Your registration for ${registration.event.title} is now ${status}.`,
-      relatedEvent: registration.event._id,
+  // If registration exists but wasn't cancelled, return appropriate response
+  if (registration.status !== "cancelled") {
+    return res.status(400).json({ 
+      message: "Registration is already active",
+      isRegistered: true,
+      status: registration.status
     });
-
-    // Send email notification
-    await sendEmail({
-      email: registration.user.email,
-      subject: `Registration Update: ${registration.event.title}`,
-      message: `Your registration status for ${registration.event.title} on ${new Date(registration.event.date).toLocaleDateString()} has been updated to ${status}.`,
-    });
-
-    res.status(200).json(registration);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
   }
+
+  // Update the registration status from cancelled to confirmed
+  registration.status = "confirmed";
+  registration.updatedAt = new Date();
+  await registration.save();
+
+  // Increment event attendee count if it was decremented on cancellation
+  if (!event.attendeesCount) event.attendeesCount = 0;
+  event.attendeesCount += 1;
+  await event.save();
+
+  // Send success response
+  res.status(200).json({
+    message: "Registration successfully reactivated",
+    isRegistered: true,
+    status: "confirmed",
+    registration
+  });
 };
 
-// @desc    Get registration by ID
-// @route   GET /api/v1/registrations/:id
-// @access  Private/Admin
-export const getRegistrationById = async (req, res) => {
-  try {
-    const registration = await Registration.findById(req.params.id)
-      .populate("user", "name email phone")
-      .populate("event", "title description date time location");
-
-    if (!registration) {
-      return res.status(404).json({ message: "Registration not found" });
-    }
-
-    res.status(200).json(registration);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
-
-// @desc    Mark attendance
-// @route   PUT /api/v1/registrations/:id/attendance
-// @access  Private/Organizer/Admin
-export const markAttendance = async (req, res) => {
-  try {
-    const { attended } = req.body;
-
-    if (attended === undefined) {
-      return res.status(400).json({ message: "Attendance status is required" });
-    }
-
-    const registration = await Registration.findById(req.params.id);
-
-    if (!registration) {
-      return res.status(404).json({ message: "Registration not found" });
-    }
-
-    // Only allow marking attendance for confirmed registrations
-    if (registration.status !== "confirmed") {
-      return res.status(400).json({
-        message: "Can only mark attendance for confirmed registrations",
-      });
-    }
-
-    registration.attendanceStatus = attended;
-    await registration.save();
-
-    res.status(200).json(registration);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
+export default {
+  registerForEvent,
+  cancelRegistration,
+  checkRegistration,
+  getUserRegistrations,
+  reactivateRegistration
 };

@@ -75,6 +75,85 @@ export const getUserProfile = async (req, res) => {
   }
 };
 
+/**
+ * Get a user profile by user ID
+ * @route GET /api/v1/profiles/user/:userId
+ * @access Public
+ */
+export const getUserProfileById = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    if (!userId) {
+      return res.status(400).json({
+        status: "error",
+        message: "User ID is required",
+      });
+    }
+
+    console.log(`Fetching profile for user ID: ${userId}`);
+
+    // Find the user profile by user ID
+    const userProfile = await UserProfile.findOne({ user: userId }).populate(
+      "user",
+      "name email profilePicture"
+    );
+
+    // If no profile exists, try to get basic user details
+    if (!userProfile) {
+      console.log("No profile found, fetching basic user details");
+      const User = mongoose.model("User");
+      const user = await User.findById(userId).select(
+        "name email profilePicture createdAt"
+      );
+
+      if (!user) {
+        console.log("User not found");
+        return res.status(404).json({
+          status: "error",
+          message: "User profile not found",
+        });
+      }
+
+      // Return basic user information
+      const basicProfile = {
+        user: {
+          _id: user._id,
+          name: user.name,
+          email: user.email,
+          profilePicture: user.profilePicture || null,
+        },
+        bio: "",
+        location: "",
+        joinDate: user.createdAt || new Date(),
+        // Default values for missing profile data
+        interests: [],
+        badges: [],
+      };
+
+      console.log("Returning basic profile:", basicProfile);
+      return res.status(200).json({
+        status: "success",
+        data: basicProfile,
+      });
+    }
+
+    // Return the full user profile
+    console.log("Returning full profile");
+    res.status(200).json({
+      status: "success",
+      data: userProfile,
+    });
+  } catch (error) {
+    console.error("Error getting user profile by ID:", error);
+    res.status(500).json({
+      status: "error",
+      message: "Failed to get user profile",
+      error: error.message,
+    });
+  }
+};
+
 // Update user profile
 export const updateUserProfile = async (req, res) => {
   try {
@@ -525,6 +604,94 @@ export const createUserProfile = async (req, res) => {
       message: "Failed to create user profile",
       error: error.message,
     });
+  }
+};
+
+// Get user dashboard data
+export const getUserDashboard = async (req, res) => {
+  try {
+    const userId = req.user._id;
+
+    // Get basic user data
+    const user = await User.findById(userId).select("-password");
+    if (!user) {
+      return ApiResponse.notFound(res, "User not found");
+    }
+
+    // Get profile data
+    let profile = await UserProfile.findOne({ user: userId });
+
+    // If profile doesn't exist, create one
+    if (!profile) {
+      profile = await createDefaultProfile(userId, user.name);
+    }
+
+    // Get upcoming events
+    const registrations = await Registration.find({
+      user: userId,
+      status: { $ne: "cancelled" },
+    })
+      .populate("event")
+      .sort({ "event.startDate": 1 })
+      .limit(5);
+
+    const upcomingEvents = registrations.map((reg) => ({
+      id: reg.event._id,
+      title: reg.event.title,
+      date: new Date(reg.event.startDate).toLocaleDateString(),
+      location: reg.event.location?.address || "Online",
+      image: reg.event.image || "/api/placeholder/event.jpg",
+    }));
+
+    // Get recent notifications
+    let notifications = [];
+    try {
+      const Notification = mongoose.model("Notification");
+      notifications = await Notification.find({ recipient: userId })
+        .sort({ createdAt: -1 })
+        .limit(5)
+        .lean();
+    } catch (err) {
+      console.log(
+        "Notification model not available or other error:",
+        err.message
+      );
+      // Continue without notifications if model doesn't exist
+    }
+
+    // Prepare dashboard data
+    const dashboardData = {
+      user: {
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        profilePicture: user.profilePicture || null,
+      },
+      stats: {
+        eventsAttended: profile.eventsAttended || 0,
+        upcomingEvents: upcomingEvents.length,
+        notifications: notifications.length,
+        favoriteEvents:
+          (await SavedEvent.countDocuments({ user: userId })) || 0,
+      },
+      recentEvents: upcomingEvents,
+      upcomingEvents: upcomingEvents,
+      notifications: notifications.map((n) => ({
+        id: n._id,
+        message: n.message,
+        date: new Date(n.createdAt).toLocaleDateString(),
+        read: n.read,
+      })),
+    };
+
+    return ApiResponse.success(
+      res,
+      "Dashboard data retrieved successfully",
+      dashboardData
+    );
+  } catch (error) {
+    console.error("Error fetching dashboard data:", error);
+    return ApiResponse.error(res, "Failed to retrieve dashboard data", 500);
   }
 };
 

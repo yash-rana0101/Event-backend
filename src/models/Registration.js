@@ -1,60 +1,55 @@
 import mongoose from "mongoose";
 
-const RegistrationSchema = new mongoose.Schema({
-  event: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "Event",
-    required: [true, "Please provide event"],
-  },
-  user: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "User",
-    required: [true, "Please provide user"],
-  },
-  status: {
-    type: String,
-    enum: ["pending", "confirmed", "cancelled"],
-    default: "pending",
-  },
-  paymentStatus: {
-    type: String,
-    enum: ["not_applicable", "pending", "completed", "refunded"],
-    default: "not_applicable",
-  },
-  paymentInfo: {
-    transactionId: {
-      type: String,
-      required: false,
+const RegistrationSchema = new mongoose.Schema(
+  {
+    user: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
     },
-    amount: {
+    event: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Event",
+      required: true,
+    },
+    status: {
+      type: String,
+      enum: ["pending", "confirmed", "cancelled", "attended"],
+      default: "confirmed",
+    },
+    ticketType: {
+      type: String,
+      default: "general",
+    },
+    ticketPrice: {
       type: Number,
-      required: false,
+      default: 0,
     },
-    method: {
+    paymentStatus: {
       type: String,
-      required: false,
+      enum: ["pending", "paid", "refunded", "free"],
+      default: "free",
     },
-    paidAt: {
+    registrationDate: {
       type: Date,
-      required: false,
+      default: Date.now,
+    },
+    attendanceDate: {
+      type: Date,
+    },
+    ticketId: {
+      type: String,
+    },
+    additionalInfo: {
+      type: Object,
     },
   },
-  attendanceStatus: {
-    type: Boolean,
-    default: false,
-  },
-  registrationDate: {
-    type: Date,
-    default: Date.now,
-  },
-  notes: {
-    type: String,
-    required: false,
-  },
-});
+  { timestamps: true }
+);
 
-// Index to ensure a user can't register for the same event multiple times
-RegistrationSchema.index({ event: 1, user: 1 }, { unique: true });
+// Add compound index to prevent duplicate registrations
+RegistrationSchema.index({ user: 1, event: 1 }, { unique: true });
 
 const Registration = mongoose.model("Registration", RegistrationSchema);
+
 export default Registration;

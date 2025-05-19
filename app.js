@@ -66,6 +66,10 @@ app.use(express.static("public"));
 // API routes
 // Add organizer routes before other routes for proper middleware execution
 app.use("/api/v1/organizer", organizerRoutes);
+
+// Fix route ordering for profiles
+app.use("/api/v1/profiles", userProfileRoutes);
+
 app.use("/api/v1/users", userRoutes);
 app.use("/api/v1/events", eventRoutes);
 app.use("/api/v1/registrations", registrationRoutes);
@@ -74,7 +78,6 @@ app.use("/api/v1/notifications", notificationRoutes);
 app.use("/api/v1/reports", reportRoutes);
 app.use("/api/v1/members", memberRoutes);
 app.use("/api/v1/teams", teamRoutes);
-app.use("/api/v1/profiles", userProfileRoutes);
 
 // Health check route
 app.get("/health", async (req, res) => {
