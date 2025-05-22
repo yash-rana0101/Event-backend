@@ -1,63 +1,44 @@
-import { Router } from "express";
-import asyncHandler from "../utils/asyncHandler.js";
-import { validate } from "../middlewares/validationMiddleware.js";
-import { authMiddleware } from "../middlewares/authMiddleware.js"; // Import as a function
+import express from "express";
+import { authMiddleware } from "../middlewares/authMiddleware.js";
+import {
+  getAllTeams,
+  getTeamById,
+  createTeam,
+  updateTeam,
+  deleteTeam,
+  applyToTeam,
+  getUserRequests,
+  cancelRequest,
+  manageTeamRequests,
+  respondToRequest,
+  leaveTeam,
+  getUserTeams,
+} from "../controllers/teamController.js";
 
-const router = Router();
+const router = express.Router();
 
-// Public team routes
-router.get(
-  "/",
-  asyncHandler(async (req, res) => {
-    // Get list of public teams
-    res.json({ teams: [] });
-  })
-);
+// Team routes
+router.get("/", getAllTeams); // Public
+router.get("/:teamId", getTeamById); // Public
 
-// Protected routes - make sure to import authMiddleware as a function
-router.use(authMiddleware); // This should be a function, not an object
+// Protected routes
+router.post("/", authMiddleware, createTeam);
+router.put("/:teamId", authMiddleware, updateTeam);
+router.delete("/:teamId", authMiddleware, deleteTeam);
 
-// Team management
-router.post(
-  "/",
-  validate("team"),
-  asyncHandler(async (req, res) => {
-    // Create a new team
-    res.status(201).json({ message: "Team created", team: {} });
-  })
-);
+// Team join/leave
+router.post("/:teamId/apply", authMiddleware, applyToTeam);
+router.delete("/:teamId/leave", authMiddleware, leaveTeam);
 
-router.get(
-  "/my-teams",
-  asyncHandler(async (req, res) => {
-    // Get user's teams
-    res.json({ teams: [] });
-  })
-);
+// Team requests
+router.get("/user/requests", authMiddleware, getUserRequests);
+router.delete("/requests/:requestId/cancel", authMiddleware, cancelRequest);
 
-router.get(
-  "/:teamId",
-  asyncHandler(async (req, res) => {
-    // Get specific team details
-    res.json({ team: {} });
-  })
-);
+// Team owner-specific
+router.get("/:teamId/requests", authMiddleware, manageTeamRequests);
+router.put("/requests/:requestId/respond", authMiddleware, respondToRequest);
 
-router.put(
-  "/:teamId",
-  validate("updateTeam"),
-  asyncHandler(async (req, res) => {
-    // Update team
-    res.json({ message: "Team updated", team: {} });
-  })
-);
-
-router.delete(
-  "/:teamId",
-  asyncHandler(async (req, res) => {
-    // Delete team
-    res.json({ message: "Team deleted" });
-  })
-);
+// User teams
+router.get("/user/teams", authMiddleware, getUserTeams);
 
 export default router;

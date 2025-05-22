@@ -20,6 +20,7 @@ import memberRoutes from "./src/routes/memberRoutes.js";
 import teamRoutes from "./src/routes/teamRoutes.js";
 import organizerRoutes from "./src/routes/organizerRoutes.js";
 import userProfileRoutes from "./src/routes/userProfileRoutes.js";
+import reviewRoutes from "./src/routes/reviewRoutes.js"; // Add this line
 
 // Import middleware
 import { authMiddleware } from "./src/middlewares/authMiddleware.js"; // Import as named export
@@ -63,24 +64,21 @@ if (process.env.NODE_ENV === "production") {
 // Static files
 app.use(express.static("public"));
 
-// API routes
-// Add organizer routes before other routes for proper middleware execution
+// API routes - Ensure event-related routes are registered before profile routes since they might overlap
 app.use("/api/v1/organizer", organizerRoutes);
-
-// Fix route ordering for profiles
+app.use("/api/v1/events", eventRoutes); // Move events route up
 app.use("/api/v1/profiles", userProfileRoutes);
-
 app.use("/api/v1/users", userRoutes);
-app.use("/api/v1/events", eventRoutes);
 app.use("/api/v1/registrations", registrationRoutes);
 app.use("/api/v1/feedback", feedbackRoutes);
 app.use("/api/v1/notifications", notificationRoutes);
 app.use("/api/v1/reports", reportRoutes);
 app.use("/api/v1/members", memberRoutes);
 app.use("/api/v1/teams", teamRoutes);
+app.use("/api/v1/reviews", reviewRoutes); // Add this line
 
 // Health check route
-app.get("/health", async (req, res) => {
+app.get("/api/v1/health", async (req, res) => {
   try {
     res.status(200).json({
       status: "ok",

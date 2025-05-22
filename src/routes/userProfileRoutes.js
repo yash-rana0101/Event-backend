@@ -20,6 +20,43 @@ const router = Router();
 
 // Public routes
 router.get("/user/:userId", getUserProfileById);
+// Add public endpoint for user's events
+router.get(
+  "/user/:userId/events",
+  asyncHandler(async (req, res) => {
+    try {
+      const { userId } = req.params;
+
+      // Get user's events from registrations with status that's not cancelled
+      const registrations = await Registration.find({
+        user: userId,
+        status: { $ne: "cancelled" },
+      }).populate("event");
+
+      // Format the events data
+      const events = registrations.map((reg) => ({
+        id: reg.event?._id,
+        title: reg.event?.title || "Unnamed Event",
+        date: reg.event?.startDate || reg.registrationDate,
+        location: reg.event?.location?.address || "No location specified",
+        image: reg.event?.images?.[0] || null,
+        status: reg.status,
+      }));
+
+      res.status(200).json({
+        success: true,
+        data: events,
+      });
+    } catch (error) {
+      console.error("Error fetching user events:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to fetch user events",
+        error: error.message,
+      });
+    }
+  })
+);
 
 // Protected routes
 router.use(authMiddleware);
@@ -221,12 +258,67 @@ router.get(
 );
 
 // Save an event
-router.post("/events/:eventId/save", asyncHandler(saveEvent));
+router.post("/me/events/:eventId/save", asyncHandler(saveEvent));
 
 // Unsave an event
-router.delete("/events/:eventId/save", asyncHandler(unsaveEvent));
+router.delete("/me/events/:eventId/save", asyncHandler(unsaveEvent));
 
 // Get user events
 router.get("/me/events", asyncHandler(getUserEvents));
+
+// Get user attended events (public)
+router.get(
+  "/user/:userId/attended-events",
+  asyncHandler(async (req, res) => {
+    try {
+      const { userId } = req.params;
+
+      // Get user profile
+      const userProfile = await UserProfile.findOne({ user: userId });
+
+      if (!userProfile) {
+        // If no profile exists, get attended events directly from registrations
+        const registrations = await Registration.find({
+          user: userId,
+          attendanceStatus: true,
+        }).populate("event");
+
+        // Format the attended events
+        const attendedEvents = registrations.map((reg) => ({
+          eventId: reg.event._id,
+          name: reg.event.title,
+          date: new Date(reg.event.startDate).toLocaleDateString("en-US", {
+            month: "long",
+            day: "numeric",
+            year: "numeric",
+          }),
+          type: reg.event.category,
+          image: reg.event.image || "/api/placeholder/80/80",
+          location: reg.event.location?.address || "Online",
+        }));
+
+        return res.status(200).json({
+          success: true,
+          data: attendedEvents,
+          count: attendedEvents.length,
+        });
+      }
+
+      // Return attended events from profile
+      res.status(200).json({
+        success: true,
+        data: userProfile.attendedEvents || [],
+        count: (userProfile.attendedEvents || []).length,
+      });
+    } catch (error) {
+      console.error("Error fetching user attended events:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to fetch attended events",
+        error: error.message,
+      });
+    }
+  })
+);
 
 export default router;

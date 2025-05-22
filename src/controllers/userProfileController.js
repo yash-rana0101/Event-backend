@@ -115,6 +115,17 @@ export const getUserProfileById = async (req, res) => {
         });
       }
 
+      // Get attended events count from registrations
+      let attendedEventsCount = 0;
+      try {
+        attendedEventsCount = await Registration.countDocuments({
+          user: userId,
+          attendanceStatus: true,
+        });
+      } catch (err) {
+        console.warn("Could not count attended events:", err);
+      }
+
       // Return basic user information
       const basicProfile = {
         user: {
@@ -129,6 +140,7 @@ export const getUserProfileById = async (req, res) => {
         // Default values for missing profile data
         interests: [],
         badges: [],
+        eventsAttended: attendedEventsCount,
       };
 
       console.log("Returning basic profile:", basicProfile);
@@ -424,7 +436,10 @@ export const saveEvent = async (req, res) => {
     // Check if event exists
     const event = await Event.findById(eventId);
     if (!event) {
-      return ApiResponse.notFound(res, "Event not found");
+      return res.status(404).json({
+        success: false,
+        message: "Event not found",
+      });
     }
 
     // Check if already saved
@@ -433,7 +448,11 @@ export const saveEvent = async (req, res) => {
       event: eventId,
     });
     if (existingSave) {
-      return ApiResponse.badRequest(res, "Event already saved");
+      return res.status(200).json({
+        success: true,
+        message: "Event already saved",
+        alreadySaved: true,
+      });
     }
 
     // Save the event
@@ -451,10 +470,16 @@ export const saveEvent = async (req, res) => {
       await profile.save();
     }
 
-    return ApiResponse.success(res, "Event saved successfully");
+    return res.status(200).json({
+      success: true,
+      message: "Event saved successfully",
+    });
   } catch (error) {
     console.error("Error saving event:", error);
-    return ApiResponse.error(res, error.message, 500);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Error saving event",
+    });
   }
 };
 
@@ -471,7 +496,10 @@ export const unsaveEvent = async (req, res) => {
     });
 
     if (!result) {
-      return ApiResponse.notFound(res, "Saved event not found");
+      return res.status(200).json({
+        success: true,
+        message: "Saved event not found or already removed",
+      });
     }
 
     // Update profile saved events count
@@ -481,10 +509,16 @@ export const unsaveEvent = async (req, res) => {
       await profile.save();
     }
 
-    return ApiResponse.success(res, "Event unsaved successfully");
+    return res.status(200).json({
+      success: true,
+      message: "Event unsaved successfully",
+    });
   } catch (error) {
     console.error("Error unsaving event:", error);
-    return ApiResponse.error(res, error.message, 500);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Error unsaving event",
+    });
   }
 };
 
@@ -692,6 +726,54 @@ export const getUserDashboard = async (req, res) => {
   } catch (error) {
     console.error("Error fetching dashboard data:", error);
     return ApiResponse.error(res, "Failed to retrieve dashboard data", 500);
+  }
+};
+
+// Get user's attended events
+/**
+ * Get user's attended events
+ * @route GET /api/v1/profiles/user/:userId/attended-events
+ * @access Public
+ */
+export const getUserAttendedEvents = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    if (!userId) {
+      return res.status(400).json({
+        status: "error",
+        message: "User ID is required",
+      });
+    }
+
+    console.log(`Fetching attended events for user ID: ${userId}`);
+
+    // Find the user profile
+    const userProfile = await UserProfile.findOne({ user: userId });
+
+    if (!userProfile) {
+      return res.status(404).json({
+        status: "error",
+        message: "User profile not found",
+      });
+    }
+
+    // Get attended events from the profile
+    const attendedEvents = userProfile.attendedEvents || [];
+
+    // Return the attended events
+    res.status(200).json({
+      status: "success",
+      data: attendedEvents,
+      count: attendedEvents.length,
+    });
+  } catch (error) {
+    console.error("Error getting user attended events:", error);
+    res.status(500).json({
+      status: "error",
+      message: "Failed to get attended events",
+      error: error.message,
+    });
   }
 };
 

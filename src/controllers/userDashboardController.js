@@ -24,10 +24,10 @@ export const getDashboardOverview = async (req, res) => {
       profile = await createDefaultProfile(userId, user.name);
     }
 
-    // Get upcoming events
+    // Get upcoming events - remove status filter
     const registrations = await Registration.find({
       user: userId,
-      status: "confirmed",
+      // Removed the status: "confirmed" filter
     })
       .populate("event")
       .sort({ "event.startDate": 1 })
@@ -133,10 +133,10 @@ export const getCalendarData = async (req, res) => {
     const startDate = new Date(targetYear, targetMonth, 1);
     const endDate = new Date(targetYear, targetMonth + 1, 0);
 
-    // Get registrations for the month
+    // Get registrations for the month - remove status filter
     const registrations = await Registration.find({
       user: userId,
-      status: "confirmed",
+      // Removed the status: "confirmed" filter
     })
       .populate("event")
       .exec();
@@ -190,10 +190,10 @@ export const getUserEvents = async (req, res) => {
   try {
     const userId = req.user._id;
 
-    // Get upcoming events
+    // Get upcoming events - remove status filter
     const registrations = await Registration.find({
       user: userId,
-      status: "confirmed",
+      // Removed the status: "confirmed" filter
     })
       .populate("event")
       .sort({ "event.startDate": 1 });
