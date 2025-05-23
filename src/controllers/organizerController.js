@@ -25,6 +25,96 @@ const getProfile = async (req, res) => {
   }
 };
 
+// Extract the getOrganizerProfile function to be exported separately
+export const getOrganizerProfile = async (req, res) => {
+  try {
+    const organizerId = req.params.id;
+
+    // Fetch organizer details
+    const organizer = await Organizer.findById(organizerId).select("-password");
+
+    if (!organizer) {
+      return res.status(404).json({ message: "Organizer not found" });
+    }
+
+    // Fetch events organized by the organizer
+    const events = await Event.find({ organizer: organizerId }).select(
+      "name date location attendees category status description highlights"
+    );
+
+    // Mock testimonials and certifications (replace with actual data if available)
+    const testimonials = [
+      {
+        name: "Sarah Johnson",
+        position: "CMO, TechGiant Inc.",
+        comment:
+          "Alex organized our company conference flawlessly. The attention to detail and creative elements made it our best event yet.",
+        rating: 5,
+      },
+      {
+        name: "Michael Chen",
+        position: "Founder, Startup Ventures",
+        comment:
+          "Working with Alex was the best decision we made for our product launch. Professional, creative, and delivers beyond expectations.",
+        rating: 5,
+      },
+    ];
+
+    const certifications = [
+      "Certified Meeting Professional (CMP)",
+      "Digital Event Strategist (DES)",
+    ];
+
+    res.status(200).json({
+      organizer,
+      events,
+      testimonials,
+      certifications,
+    });
+  } catch (error) {
+    console.error("Error fetching organizer profile:", error);
+    res.status(500).json({ message: "Failed to retrieve organizer profile" });
+  }
+};
+
+// Also export updateOrganizerProfile which is likely needed
+export const updateOrganizerProfile = async (req, res) => {
+  try {
+    const organizerId = req.params.id;
+    const updateData = req.body;
+
+    // Check if organizer exists
+    const organizer = await Organizer.findById(organizerId);
+
+    if (!organizer) {
+      return res.status(404).json({ message: "Organizer not found" });
+    }
+
+    // Check if the requesting user has permission to update
+    if (req.organizer._id.toString() !== organizerId) {
+      return res
+        .status(403)
+        .json({ message: "Not authorized to update this profile" });
+    }
+
+    // Update organizer info
+    const updatedOrganizer = await Organizer.findByIdAndUpdate(
+      organizerId,
+      updateData,
+      { new: true, runValidators: true }
+    ).select("-password");
+
+    res.status(200).json({
+      success: true,
+      organizer: updatedOrganizer,
+    });
+  } catch (error) {
+    console.error("Error updating organizer profile:", error);
+    res.status(500).json({ message: "Failed to update profile" });
+  }
+};
+
+// Define the controller object
 const organizerController = {
   async register(req, res) {
     try {
@@ -278,59 +368,6 @@ const organizerController = {
     }
   },
 
-  async getOrganizerProfile(req, res) {
-    try {
-      const organizerId = req.params.organizerId;
-
-      // Fetch organizer details
-      const organizer = await Organizer.findById(organizerId).select(
-        "-password"
-      );
-
-      if (!organizer) {
-        return res.status(404).json({ message: "Organizer not found" });
-      }
-
-      // Fetch events organized by the organizer
-      const events = await Event.find({ organizer: organizerId }).select(
-        "name date location attendees category status description highlights"
-      );
-
-      // Mock testimonials and certifications (replace with actual data if available)
-      const testimonials = [
-        {
-          name: "Sarah Johnson",
-          position: "CMO, TechGiant Inc.",
-          comment:
-            "Alex organized our company conference flawlessly. The attention to detail and creative elements made it our best event yet.",
-          rating: 5,
-        },
-        {
-          name: "Michael Chen",
-          position: "Founder, Startup Ventures",
-          comment:
-            "Working with Alex was the best decision we made for our product launch. Professional, creative, and delivers beyond expectations.",
-          rating: 5,
-        },
-      ];
-
-      const certifications = [
-        "Certified Meeting Professional (CMP)",
-        "Digital Event Strategist (DES)",
-      ];
-
-      res.status(200).json({
-        organizer,
-        events,
-        testimonials,
-        certifications,
-      });
-    } catch (error) {
-      console.error("Error fetching organizer profile:", error);
-      res.status(500).json({ message: "Failed to retrieve organizer profile" });
-    }
-  },
-
   async getOrganizerDetails(req, res) {
     try {
       const { organizerId } = req.params;
@@ -492,5 +529,9 @@ const organizerController = {
   // Use the same function for getMe endpoint
   getMe: getProfile, // Reference the function directly instead of using this
 };
+
+// Export the registerOrganizer and loginOrganizer functions
+export const registerOrganizer = organizerController.register;
+export const loginOrganizer = organizerController.login;
 
 export default organizerController;

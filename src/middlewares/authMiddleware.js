@@ -67,10 +67,10 @@ export const authMiddleware = async (req, res, next) => {
       req.organizer = organizer;
       req.user = {
         _id: organizer._id, // Add this line to ensure consistent ID access
-        id: organizer._id,  // For compatibility with existing code
-        role: 'organizer',
+        id: organizer._id, // For compatibility with existing code
+        role: "organizer",
         name: organizer.name,
-        email: organizer.email
+        email: organizer.email,
       };
       return next();
     }
@@ -82,21 +82,21 @@ export const authMiddleware = async (req, res, next) => {
     });
   } catch (error) {
     console.error("Authentication error:", error);
-    
+
     if (error.name === "JsonWebTokenError") {
       return res.status(401).json({
         success: false,
         message: "Invalid token",
       });
     }
-    
+
     if (error.name === "TokenExpiredError") {
       return res.status(401).json({
         success: false,
         message: "Token expired",
       });
     }
-    
+
     return res.status(500).json({
       success: false,
       message: "Authentication error",
@@ -316,6 +316,66 @@ export const optionalAuth = async (req, res, next) => {
   }
 };
 
+/**
+ * Middleware to verify organizer authentication
+ * Only allows authenticated organizers to proceed
+ */
+export const organizerAuthMiddleware = async (req, res, next) => {
+  try {
+    // Check for authorization header
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res
+        .status(401)
+        .json({ message: "Unauthorized - No token provided" });
+    }
+
+    // Extract token
+    const token = authHeader.split(" ")[1];
+
+    if (!token) {
+      return res
+        .status(401)
+        .json({ message: "Unauthorized - Invalid token format" });
+    }
+
+    // Verify token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    if (!decoded || !decoded.id) {
+      return res.status(401).json({ message: "Unauthorized - Invalid token" });
+    }
+
+    // Find organizer
+    const organizer = await Organizer.findById(decoded.id);
+
+    if (!organizer) {
+      return res
+        .status(401)
+        .json({ message: "Unauthorized - Organizer not found" });
+    }
+
+    // Set organizer in request object
+    req.organizer = organizer;
+
+    // Continue to the next middleware
+    next();
+  } catch (error) {
+    console.error("Auth middleware error:", error);
+
+    if (error.name === "JsonWebTokenError") {
+      return res.status(401).json({ message: "Unauthorized - Invalid token" });
+    }
+
+    if (error.name === "TokenExpiredError") {
+      return res.status(401).json({ message: "Unauthorized - Token expired" });
+    }
+
+    return res.status(500).json({ message: "Internal server error" });
+  }
+};
+
 // Export as named exports and default object
 export default {
   authMiddleware,
@@ -323,4 +383,5 @@ export default {
   anyAuthMiddleware,
   getTokenFromHeader,
   optionalAuth,
+  organizerAuthMiddleware,
 };

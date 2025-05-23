@@ -6,8 +6,8 @@ import helmet from "helmet";
 import compression from "compression";
 import { EventEmitter } from "events";
 
-// Set max listeners
-EventEmitter.defaultMaxListeners = 15;
+// Set max listeners to a higher value to avoid warnings
+EventEmitter.defaultMaxListeners = 20; // Increased from 15 to 20
 
 // Import routes
 import userRoutes from "./src/routes/userRoutes.js";

@@ -452,6 +452,40 @@ export const getOrganizerEvents = async (req, res) => {
   }
 };
 
+// Get completed events for an organizer
+export const getCompletedEvents = async (req, res) => {
+  try {
+    const organizerId = req.organizer?._id || req.user?._id;
+
+    if (!organizerId) {
+      return res.status(401).json({
+        message: "Authentication required",
+      });
+    }
+
+    // Find events where the end date is in the past
+    const now = new Date();
+    const completedEvents = await Event.find({
+      organizer: organizerId,
+      $or: [
+        { endDate: { $lt: now } },
+        { startDate: { $lt: now }, endDate: { $exists: false } },
+      ],
+    }).sort({ endDate: -1, startDate: -1 });
+
+    res.status(200).json({
+      success: true,
+      data: completedEvents,
+    });
+  } catch (error) {
+    console.error("Error fetching completed events:", error);
+    res.status(500).json({
+      message: "Server error when fetching completed events",
+      error: error.message,
+    });
+  }
+};
+
 // Toggle event feature status (admin only)
 export const toggleFeaturedStatus = async (req, res) => {
   try {
