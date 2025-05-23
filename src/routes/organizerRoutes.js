@@ -7,6 +7,7 @@ import organizerDetailsModel from "../models/organizerDetailsModel.js";
 import { validate } from "../middlewares/validationMiddleware.js"; // Add this import
 import asyncHandler from "../utils/asyncHandler.js";
 import { verifyOrganizerToken } from "../middlewares/authMiddleware.js";
+import attendeeController from "../controllers/attendeeController.js"; // Import the attendee controller
 
 const router = Router();
 
@@ -425,25 +426,22 @@ router.get(
 // Attendee management
 router.get(
   "/events/:eventId/attendees",
-  asyncHandler(async (req, res) => {
-    // Temporary handler until organizerController.getEventAttendees is implemented
-    const { eventId } = req.params;
-    res.json({
-      eventId,
-      attendees: [],
-    });
-  })
+  authMiddleware,
+  asyncHandler(attendeeController.getEventAttendees)
 );
 
+// Update attendee check-in status
 router.post(
   "/events/:eventId/attendees/:attendeeId/check-in",
-  asyncHandler(async (req, res) => {
-    // Temporary handler until organizerController.checkInAttendee is implemented
-    const { eventId, attendeeId } = req.params;
-    res.json({
-      message: `Attendee ${attendeeId} checked in successfully for event ${eventId}`,
-    });
-  })
+  authMiddleware,
+  asyncHandler(attendeeController.updateAttendeeCheckIn)
+);
+
+// Add attendee manually
+router.post(
+  "/events/:eventId/attendees",
+  authMiddleware,
+  asyncHandler(attendeeController.addAttendeeManually)
 );
 
 // Analytics with caching

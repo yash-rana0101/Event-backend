@@ -148,6 +148,11 @@ export const getEventById = async (req, res) => {
   try {
     const { eventId } = req.params;
 
+    // Validate eventId before querying
+    if (!eventId || !mongoose.Types.ObjectId.isValid(eventId)) {
+      return res.status(400).json({ message: "Invalid event ID" });
+    }
+
     const event = await Event.findById(eventId).populate(
       "organizer",
       "name email profilePicture"
@@ -209,18 +214,28 @@ export const createEvent = async (req, res) => {
       });
     }
 
-    // const imagesLocalPath = req.file?.path;
+    // Handle single image upload to Cloudinary
+    let imageUrl = undefined;
+    if (req.file && req.file.path) {
+      const uploadResult = await uploadOnCloudinary(req.file.path);
+      if (uploadResult && uploadResult.url) {
+        imageUrl = uploadResult.url;
+      }
+    }
 
-    // let imagesUrl;
+    // Ensure image is a string or undefined
+    let imageField = imageUrl;
+    if (!imageField) {
+      if (
+        typeof eventData.image === "string" &&
+        eventData.image.trim() !== ""
+      ) {
+        imageField = eventData.image;
+      } else {
+        imageField = undefined;
+      }
+    }
 
-    // if (imagesLocalPath) {
-    //   const images = await uploadOnCloudinary(imagesLocalPath);
-    //   if (images) {
-    //     imagesUrl = images.url;
-    //     console.log("images : ", images);
-    //   }
-    // }
-    
     // Create the event object
     const newEvent = new Event({
       ...eventData,
@@ -228,6 +243,7 @@ export const createEvent = async (req, res) => {
       date:
         eventData.date || new Date(eventData.startDate).toLocaleDateString(),
       status: eventData.status || "active",
+      image: imageField,
     });
 
     console.log("Creating new event:", {

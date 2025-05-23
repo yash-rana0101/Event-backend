@@ -23,13 +23,13 @@ router.use(authMiddleware);
 // Event creation and management
 router.post(
   "/",
-  upload.array("images", 5), // Using the imported upload middleware
+  upload.single("image"), // Use single image upload for create event
   asyncHandler(eventController.createEvent)
 ); // Create event
 router.put(
   "/:id",
   eventOrganizerMiddleware,
-  upload.array("images", 5),
+  upload.array("images", 1),
   asyncHandler(eventController.updateEvent)
 ); // Update event
 router.delete(

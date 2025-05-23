@@ -38,7 +38,7 @@ router.post("/register", validate("register"), async (req, res) => {
         message: "User already exists with that email or name",
       });
     }
-    
+
     if (existingOrganizer) {
       return res.status(409).json({
         success: false,
@@ -135,7 +135,7 @@ router.post("/login", async (req, res) => {
       });
     }
 
-    // Generate JWT token
+    // Generate JWT token with longer expiration (7 days)
     const jwtSecret = config.jwtSecret || process.env.JWT_SECRET;
 
     if (!jwtSecret) {
@@ -147,7 +147,7 @@ router.post("/login", async (req, res) => {
     }
 
     const token = jwt.sign({ id: user._id, role: user.role }, jwtSecret, {
-      expiresIn: config.jwtExpiresIn || "1d",
+      expiresIn: config.jwtExpiresIn || "7d", // Changed from 1d to 7d
     });
 
     // Return user data and token

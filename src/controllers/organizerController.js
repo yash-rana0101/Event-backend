@@ -108,9 +108,9 @@ const organizerController = {
         });
       }
 
-      // Generate token
+      // Generate token with longer expiration (7 days)
       const token = jwt.sign({ id: organizer._id }, process.env.JWT_SECRET, {
-        expiresIn: "1d",
+        expiresIn: "7d",
       });
 
       // Return success with token and organizer data
@@ -479,12 +479,10 @@ const organizerController = {
       return res.status(200).json(result);
     } catch (error) {
       console.error("Error updating organizer details:", error);
-      return res
-        .status(500)
-        .json({
-          message: "Failed to update organizer details",
-          error: error.message,
-        });
+      return res.status(500).json({
+        message: "Failed to update organizer details",
+        error: error.message,
+      });
     }
   },
 

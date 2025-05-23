@@ -144,10 +144,10 @@ const EventSchema = new mongoose.Schema(
       ],
       default: "other",
     },
-    // image: {
-    //   type: String,
-    //   default: "",
-    // },
+    image: {
+      type: String,
+      default: "",
+    },
     featured: {
       type: Boolean,
       default: false,

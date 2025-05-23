@@ -24,75 +24,82 @@ const getTokenFromHeader = (req) => {
 
 export const authMiddleware = async (req, res, next) => {
   try {
-    // Get token from header
-    const token = getTokenFromHeader(req);
+    let token;
+
+    // Check for token in authorization header
+    if (
+      req.headers.authorization &&
+      req.headers.authorization.startsWith("Bearer")
+    ) {
+      token = req.headers.authorization.split(" ")[1];
+    }
 
     if (!token) {
       return res.status(401).json({
-        message: "No token provided",
-        code: "NO_TOKEN",
+        success: false,
+        message: "Please log in to access this resource",
       });
     }
 
-    // Log token for debugging (REMOVE IN PRODUCTION)
-    console.log("Token received:", token.substring(0, 15) + "...");
+    // Verify token
+    const decoded = jwt.verify(token, config.jwtSecret);
 
-    // Verify the token
-    const decoded = jwt.verify(
-      token,
-      config.jwtSecret || process.env.JWT_SECRET
-    );
-
-    if (!decoded || !decoded.id) {
+    // Check if decoded ID is valid
+    if (!decoded.id) {
       return res.status(401).json({
-        message: "Invalid token",
-        code: "INVALID_TOKEN",
+        success: false,
+        message: "Invalid token format",
       });
     }
 
-    // Check if user exists
-    let user = await User.findById(decoded.id).select("-password");
-
-    // If not found as user, try organizer
-    if (!user) {
-      user = await Organizer.findById(decoded.id).select("-password");
-    }
-
+    // Find user
+    let user = await User.findById(decoded.id);
     if (user) {
-      // Attach user to request
+      // Set user in request
       req.user = user;
-      req.userType = user.constructor.modelName.toLowerCase();
-      next();
-    } else {
-      return res.status(401).json({
-        message: "User not found",
-        code: "USER_NOT_FOUND",
-      });
+      return next();
     }
-  } catch (error) {
-    console.error("Auth middleware error:", error);
 
-    // Provide more specific error messages
+    // If not a regular user, try to find organizer
+    let organizer = await Organizer.findById(decoded.id);
+    if (organizer) {
+      // Set organizer in request
+      req.organizer = organizer;
+      req.user = {
+        _id: organizer._id, // Add this line to ensure consistent ID access
+        id: organizer._id,  // For compatibility with existing code
+        role: 'organizer',
+        name: organizer.name,
+        email: organizer.email
+      };
+      return next();
+    }
+
+    // If no user or organizer found
+    return res.status(401).json({
+      success: false,
+      message: "User not found",
+    });
+  } catch (error) {
+    console.error("Authentication error:", error);
+    
     if (error.name === "JsonWebTokenError") {
       return res.status(401).json({
-        message: "Invalid token format",
-        code: "INVALID_TOKEN_FORMAT",
-        error: error.message,
+        success: false,
+        message: "Invalid token",
       });
     }
-
+    
     if (error.name === "TokenExpiredError") {
       return res.status(401).json({
+        success: false,
         message: "Token expired",
-        code: "TOKEN_EXPIRED",
-        error: error.message,
       });
     }
-
-    return res.status(401).json({
-      message: "Authentication failed",
-      code: "AUTH_FAILED",
-      error: error.message,
+    
+    return res.status(500).json({
+      success: false,
+      message: "Authentication error",
     });
   }
 };
