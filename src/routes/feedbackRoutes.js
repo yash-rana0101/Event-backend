@@ -1,45 +1,35 @@
 import { Router } from "express";
 import { validate } from "../middlewares/validationMiddleware.js";
 import asyncHandler from "../utils/asyncHandler.js";
-import { authMiddleware } from "../middlewares/authMiddleware.js"; // Import authMiddleware directly
-import Feedback from "../models/Feedback.js"; // Import Feedback model
+import { authMiddleware } from "../middlewares/authMiddleware.js";
+import Feedback from "../models/Feedback.js";
+import {
+  submitFeedback,
+  getEventFeedback,
+  getEventFeedbackSummary,
+  getUserFeedback,
+  deleteFeedback,
+} from "../controllers/feedbackController.js";
 
 const router = Router();
 
 // Public feedback routes
-router.get(
-  "/events/:eventId/feedback",
-  asyncHandler(async (req, res) => {
-    const { eventId } = req.params;
-    const feedback = await Feedback.find({ eventId, public: true });
-    res.json({ feedback });
-  })
-);
+router.get("/events/:eventId/feedback", asyncHandler(getEventFeedback));
 
-// Protected routes - use authMiddleware as a function (not object.method)
-router.use(authMiddleware); // Make sure this is a function, not an object
+// Add feedback summary route
+router.get("/events/:eventId/summary", asyncHandler(getEventFeedbackSummary));
+
+// Protected routes
+router.use(authMiddleware);
 
 // User feedback management
 router.post(
   "/events/:eventId",
   validate("feedback"),
-  asyncHandler(async (req, res) => {
-    const { eventId } = req.params;
-    const { userId, content, rating } = req.body;
-    const feedback = new Feedback({ eventId, userId, content, rating });
-    await feedback.save();
-    res.status(201).json({ message: "Feedback submitted" });
-  })
+  asyncHandler(submitFeedback)
 );
 
-router.get(
-  "/my-feedback",
-  asyncHandler(async (req, res) => {
-    const { userId } = req.user;
-    const feedback = await Feedback.find({ userId });
-    res.json({ feedback });
-  })
-);
+router.get("/my-feedback", asyncHandler(getUserFeedback));
 
 router.put(
   "/:feedbackId",
@@ -52,13 +42,6 @@ router.put(
   })
 );
 
-router.delete(
-  "/:feedbackId",
-  asyncHandler(async (req, res) => {
-    const { feedbackId } = req.params;
-    await Feedback.findByIdAndDelete(feedbackId);
-    res.json({ message: "Feedback deleted" });
-  })
-);
+router.delete("/:feedbackId", asyncHandler(deleteFeedback));
 
 export default router;

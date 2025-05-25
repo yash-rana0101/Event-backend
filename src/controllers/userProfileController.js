@@ -91,8 +91,6 @@ export const getUserProfileById = async (req, res) => {
       });
     }
 
-    console.log(`Fetching profile for user ID: ${userId}`);
-
     // Find the user profile by user ID
     const userProfile = await UserProfile.findOne({ user: userId }).populate(
       "user",

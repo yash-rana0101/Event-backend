@@ -58,6 +58,14 @@ const organizerDetailsSchema = new mongoose.Schema(
           max: 5,
           default: 5,
         },
+        date: {
+          type: Date,
+          default: Date.now,
+        },
+        verified: {
+          type: Boolean,
+          default: false,
+        },
       },
     ],
     certifications: [String],

@@ -30,50 +30,123 @@ export const getOrganizerProfile = async (req, res) => {
   try {
     const organizerId = req.params.id;
 
-    // Fetch organizer details
+    console.log("Fetching organizer profile for ID:", organizerId);
+
+    // Fetch basic organizer details
     const organizer = await Organizer.findById(organizerId).select("-password");
 
     if (!organizer) {
       return res.status(404).json({ message: "Organizer not found" });
     }
 
+    // Fetch detailed organizer profile information
+    const organizerDetails = await OrganizerDetails.findOne({
+      organizer: organizerId,
+    });
+
     // Fetch events organized by the organizer
     const events = await Event.find({ organizer: organizerId }).select(
-      "name date location attendees category status description highlights"
+      "title startDate location attendeesCount category status description highlights images price"
     );
 
-    // Mock testimonials and certifications (replace with actual data if available)
-    const testimonials = [
-      {
-        name: "Sarah Johnson",
-        position: "CMO, TechGiant Inc.",
-        comment:
-          "Alex organized our company conference flawlessly. The attention to detail and creative elements made it our best event yet.",
-        rating: 5,
-      },
-      {
-        name: "Michael Chen",
-        position: "Founder, Startup Ventures",
-        comment:
-          "Working with Alex was the best decision we made for our product launch. Professional, creative, and delivers beyond expectations.",
-        rating: 5,
-      },
-    ];
+    // Get testimonials from the organizer details
+    let testimonials = [];
+    if (organizerDetails && organizerDetails.testimonials) {
+      testimonials = organizerDetails.testimonials;
+    }
 
-    const certifications = [
-      "Certified Meeting Professional (CMP)",
-      "Digital Event Strategist (DES)",
-    ];
+    // Try to get additional testimonials from a Feedback model if it exists
+    try {
+      const Feedback = mongoose.model("Feedback");
+      const feedbacks = await Feedback.find({
+        organizer: organizerId,
+        type: "testimonial",
+      })
+        .populate("user", "name")
+        .select("rating comment user createdAt")
+        .sort({ createdAt: -1 })
+        .limit(10);
 
-    res.status(200).json({
-      organizer,
+      // Convert feedbacks to testimonial format
+      const feedbackTestimonials = feedbacks.map((feedback) => ({
+        name: feedback.user?.name || "Anonymous",
+        comment: feedback.comment,
+        rating: feedback.rating,
+        date: feedback.createdAt,
+      }));
+
+      // Combine testimonials from both sources
+      testimonials = [...testimonials, ...feedbackTestimonials];
+    } catch (feedbackError) {
+      console.log(
+        "Feedback model not available or error fetching feedbacks:",
+        feedbackError.message
+      );
+      // Continue without additional feedbacks
+    }
+
+    // Calculate organizer statistics
+    const totalEvents = events.length;
+    const upcomingEvents = events.filter(
+      (event) => new Date(event.startDate) > new Date()
+    ).length;
+    const completedEvents = events.filter(
+      (event) =>
+        new Date(event.startDate) <= new Date() && event.status !== "cancelled"
+    ).length;
+    const totalAttendees = events.reduce(
+      (sum, event) => sum + (event.attendeesCount || 0),
+      0
+    );
+
+    // Build comprehensive profile response
+    const profileResponse = {
+      organizer: {
+        _id: organizer._id,
+        name: organizer.name,
+        email: organizer.email,
+        organization: organizer.organization,
+        createdAt: organizer.createdAt,
+      },
+      details: organizerDetails && {
+        title: organizerDetails.title,
+        company: organizerDetails.company,
+        location: organizerDetails.location,
+        phone: organizerDetails.phone,
+        bio: organizerDetails.bio,
+        expertise: organizerDetails.expertise,
+        socials: organizerDetails.socials,
+        certifications: organizerDetails.certifications,
+        stats: {
+          eventsHosted: organizerDetails.stats?.eventsHosted || totalEvents,
+          totalAttendees:
+            organizerDetails.stats?.totalAttendees || totalAttendees.toString(),
+          clientSatisfaction:
+            organizerDetails.stats?.clientSatisfaction || "0%",
+          awards: organizerDetails.stats?.awards || 0,
+        },
+      },
       events,
       testimonials,
-      certifications,
+      statistics: {
+        totalEvents,
+        upcomingEvents,
+        completedEvents,
+        totalAttendees,
+      },
+    };
+
+    res.status(200).json({
+      success: true,
+      data: profileResponse,
     });
   } catch (error) {
     console.error("Error fetching organizer profile:", error);
-    res.status(500).json({ message: "Failed to retrieve organizer profile" });
+    res.status(500).json({
+      success: false,
+      message: "Failed to retrieve organizer profile",
+      error: error.message,
+    });
   }
 };
 

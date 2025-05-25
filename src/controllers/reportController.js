@@ -8,16 +8,75 @@ import User from "../models/User.js";
 export const getEventAttendanceReport = async (req, res) => {
   try {
     const eventId = req.params.eventId;
+
+    // Get event details
+    const event = await Event.findById(eventId);
+    if (!event) {
+      return res.status(404).json({ message: "Event not found" });
+    }
+
+    // Get all registrations for this event
     const registrations = await Registration.find({
       event: eventId,
-      status: "confirmed",
     })
-      .populate("user", "name email")
+      .populate("user", "name email phone")
       .sort("registrationDate");
 
-    res.status(200).json(registrations);
+    // Get attendees (confirmed registrations)
+    const attendees = registrations
+      .filter((reg) => reg.status === "confirmed" || reg.status === "attended")
+      .map((reg) => ({
+        _id: reg._id,
+        name: reg.user?.name || "Anonymous User",
+        email: reg.user?.email || "No email provided",
+        phone: reg.user?.phone || null,
+        ticketType: reg.ticketType || "Regular",
+        checkInStatus:
+          reg.status === "attended" ? "checked-in" : "not-checked-in",
+        checkInTime: reg.attendanceDate || null,
+        registrationDate: reg.registrationDate || reg.createdAt,
+      }));
+
+    // Calculate statistics
+    const totalRegistrations = registrations.length;
+    const confirmedAttendees = registrations.filter(
+      (reg) => reg.status === "confirmed" || reg.status === "attended"
+    ).length;
+    const checkedInAttendees = registrations.filter(
+      (reg) => reg.status === "attended"
+    ).length;
+    const cancelledRegistrations = registrations.filter(
+      (reg) => reg.status === "cancelled"
+    ).length;
+
+    const response = {
+      event: {
+        id: event._id,
+        title: event.title,
+        date: event.startDate,
+        capacity: event.capacity || 0,
+      },
+      statistics: {
+        totalRegistrations,
+        confirmedAttendees,
+        checkedInAttendees,
+        cancelledRegistrations,
+        checkInRate:
+          confirmedAttendees > 0
+            ? Math.round((checkedInAttendees / confirmedAttendees) * 100)
+            : 0,
+      },
+      attendees,
+      registrations,
+    };
+
+    res.status(200).json(response);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error("Error fetching attendance report:", error);
+    res.status(500).json({
+      message: "Failed to fetch attendance report",
+      error: error.message,
+    });
   }
 };
 

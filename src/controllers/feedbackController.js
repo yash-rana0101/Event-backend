@@ -43,6 +43,72 @@ export const getEventFeedback = async (req, res) => {
   }
 };
 
+// @desc    Get feedback summary for an event
+// @route   GET /api/feedback/events/:eventId/summary
+// @access  Private/EventOrganizer
+export const getEventFeedbackSummary = async (req, res) => {
+  try {
+    const eventId = req.params.eventId;
+
+    // Get all feedback for the event
+    const feedback = await Feedback.find({ event: eventId })
+      .populate("user", "name")
+      .sort("-createdAt");
+
+    if (feedback.length === 0) {
+      return res.status(200).json({
+        success: true,
+        data: {
+          totalFeedback: 0,
+          averageRating: 0,
+          ratingDistribution: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 },
+          recentComments: [],
+          responseRate: 0,
+        },
+      });
+    }
+
+    // Calculate average rating
+    const totalRating = feedback.reduce((sum, item) => sum + item.rating, 0);
+    const averageRating = (totalRating / feedback.length).toFixed(1);
+
+    // Calculate rating distribution
+    const ratingDistribution = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
+    feedback.forEach((item) => {
+      ratingDistribution[item.rating]++;
+    });
+
+    // Get recent comments (last 5 with comments)
+    const recentComments = feedback
+      .filter((item) => item.comment && item.comment.trim() !== "")
+      .slice(0, 5)
+      .map((item) => ({
+        comment: item.comment,
+        rating: item.rating,
+        userName: item.user?.name || "Anonymous",
+        createdAt: item.createdAt,
+      }));
+
+    res.status(200).json({
+      success: true,
+      data: {
+        totalFeedback: feedback.length,
+        averageRating: parseFloat(averageRating),
+        ratingDistribution,
+        recentComments,
+        responseRate: 0, // This would need attendee count to calculate properly
+      },
+    });
+  } catch (error) {
+    console.error("Error getting feedback summary:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to get feedback summary",
+      error: error.message,
+    });
+  }
+};
+
 // @desc    Get feedback submitted by a user
 // @route   GET /api/feedback/user
 // @access  Private

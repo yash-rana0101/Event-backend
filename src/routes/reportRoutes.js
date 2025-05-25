@@ -1,6 +1,8 @@
 import { Router } from "express";
 import asyncHandler from "../utils/asyncHandler.js";
 import { authMiddleware } from "../middlewares/authMiddleware.js"; // Import the named function directly
+import { getEventAttendanceReport } from "../controllers/reportController.js";
+import { getEventFeedbackSummary } from "../controllers/feedbackController.js";
 
 const router = Router();
 
@@ -53,10 +55,12 @@ router.get(
 
 router.get(
   "/events/:eventId/feedback-summary",
-  asyncHandler(async (req, res) => {
-    // Feedback summary
-    res.json({ feedbackSummary: {} });
-  })
+  asyncHandler(getEventFeedbackSummary)
+);
+
+router.get(
+  "/events/:eventId/attendance",
+  asyncHandler(getEventAttendanceReport)
 );
 
 export default router;
