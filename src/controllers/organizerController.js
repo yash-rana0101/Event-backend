@@ -227,23 +227,25 @@ export const registerOrganizer = async (req, res) => {
       email,
       password,
       organization,
+      verified: false, // Set verified to false by default
+      status: "pending", // Set status to pending
       ...(phone && { phone }),
     };
 
     const organizer = await Organizer.create(organizerData);
 
-    const token = jwt.sign({ id: organizer._id }, process.env.JWT_SECRET, {
-      expiresIn: "7d",
-    });
-
+    // Don't create token on registration - user needs to be verified first
     res.status(201).json({
       success: true,
-      token,
+      message:
+        "Registration successful! Your account is pending approval. You will be notified once verified.",
       organizer: {
         id: organizer._id,
         name,
         email,
         organization,
+        verified: false,
+        status: "pending",
         ...(phone && { phone }),
       },
     });
@@ -305,6 +307,17 @@ export const loginOrganizer = async (req, res) => {
       });
     }
 
+    // Check if organizer is verified
+    if (!organizer.verified) {
+      return res.status(403).json({
+        success: false,
+        message:
+          "Your account is pending approval. Please wait for admin verification.",
+        verified: false,
+        status: organizer.status || "pending",
+      });
+    }
+
     const token = jwt.sign({ id: organizer._id }, process.env.JWT_SECRET, {
       expiresIn: "7d",
     });
@@ -317,6 +330,8 @@ export const loginOrganizer = async (req, res) => {
         name: organizer.name,
         email: organizer.email,
         organization: organizer.organization,
+        verified: organizer.verified,
+        status: organizer.status,
       },
     });
   } catch (error) {

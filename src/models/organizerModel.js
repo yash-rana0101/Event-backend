@@ -54,6 +54,19 @@ const organizerSchema = new Schema(
       type: Boolean,
       default: false,
     },
+    status: {
+      type: String,
+      enum: ["pending", "approved", "rejected", "suspended", "blocked"],
+      default: "pending",
+    },
+    approvalReason: String,
+    approvedBy: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+    },
+    approvedAt: Date,
+    rejectedAt: Date,
+    phone: String,
   },
   {
     timestamps: true,

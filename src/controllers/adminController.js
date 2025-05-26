@@ -263,17 +263,33 @@ export const approveOrganizer = async (req, res) => {
       return ApiResponse.notFound(res, "Organizer not found");
     }
 
-    organizer.status = approved ? "approved" : "rejected";
-    organizer.approvalReason = reason;
-    organizer.approvedBy = req.admin._id;
-    organizer.approvedAt = new Date();
+    if (approved) {
+      organizer.status = "approved";
+      organizer.verified = true; // Set verified to true when approved
+      organizer.approvalReason = reason;
+      organizer.approvedBy = req.user._id; // Use req.user instead of req.admin
+      organizer.approvedAt = new Date();
+    } else {
+      organizer.status = "rejected";
+      organizer.verified = false;
+      organizer.approvalReason = reason;
+      organizer.rejectedAt = new Date();
+    }
 
     await organizer.save();
 
     return ApiResponse.success(
       res,
       `Organizer ${approved ? "approved" : "rejected"} successfully`,
-      organizer
+      {
+        id: organizer._id,
+        name: organizer.name,
+        email: organizer.email,
+        organization: organizer.organization,
+        status: organizer.status,
+        verified: organizer.verified,
+        approvalReason: organizer.approvalReason,
+      }
     );
   } catch (error) {
     console.error("Error updating organizer status:", error);
@@ -566,23 +582,71 @@ export const getOrganizerStats = async (req, res) => {
         $group: {
           _id: null,
           totalOrganizers: { $sum: 1 },
-          activeOrganizers: {
-            $sum: { $cond: [{ $eq: ["$status", "active"] }, 1, 0] },
+          approvedOrganizers: {
+            $sum: { $cond: [{ $eq: ["$status", "approved"] }, 1, 0] },
           },
           pendingOrganizers: {
             $sum: { $cond: [{ $eq: ["$status", "pending"] }, 1, 0] },
+          },
+          rejectedOrganizers: {
+            $sum: { $cond: [{ $eq: ["$status", "rejected"] }, 1, 0] },
+          },
+          suspendedOrganizers: {
+            $sum: { $cond: [{ $eq: ["$status", "suspended"] }, 1, 0] },
+          },
+          blockedOrganizers: {
+            $sum: { $cond: [{ $eq: ["$status", "blocked"] }, 1, 0] },
+          },
+          verifiedOrganizers: {
+            $sum: { $cond: [{ $eq: ["$verified", true] }, 1, 0] },
+          },
+          unverifiedOrganizers: {
+            $sum: { $cond: [{ $eq: ["$verified", false] }, 1, 0] },
           },
         },
       },
     ]);
 
+    const result = stats[0] || {
+      totalOrganizers: 0,
+      approvedOrganizers: 0,
+      pendingOrganizers: 0,
+      rejectedOrganizers: 0,
+      suspendedOrganizers: 0,
+      blockedOrganizers: 0,
+      verifiedOrganizers: 0,
+      unverifiedOrganizers: 0,
+    };
+
+    // Calculate additional metrics
+    const response = {
+      ...result,
+      // Active organizers are those who are approved and verified
+      activeOrganizers: result.approvedOrganizers,
+      // Inactive organizers include rejected, suspended, and blocked
+      inactiveOrganizers:
+        result.rejectedOrganizers +
+        result.suspendedOrganizers +
+        result.blockedOrganizers,
+      // Verification rate
+      verificationRate:
+        result.totalOrganizers > 0
+          ? Math.round(
+              (result.verifiedOrganizers / result.totalOrganizers) * 100
+            )
+          : 0,
+      // Approval rate
+      approvalRate:
+        result.totalOrganizers > 0
+          ? Math.round(
+              (result.approvedOrganizers / result.totalOrganizers) * 100
+            )
+          : 0,
+    };
+
     res.status(200).json({
       success: true,
-      data: stats[0] || {
-        totalOrganizers: 0,
-        activeOrganizers: 0,
-        pendingOrganizers: 0,
-      },
+      data: response,
     });
   } catch (error) {
     console.error("Error fetching organizer stats:", error);
@@ -596,13 +660,9 @@ export const getOrganizerStats = async (req, res) => {
 export const updateOrganizerStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    const { status } = req.body;
+    const { status, reason } = req.body;
 
-    const organizer = await Organizer.findByIdAndUpdate(
-      id,
-      { status },
-      { new: true, runValidators: true }
-    ).select("-password");
+    const organizer = await Organizer.findById(id);
 
     if (!organizer) {
       return res.status(404).json({
@@ -611,9 +671,41 @@ export const updateOrganizerStatus = async (req, res) => {
       });
     }
 
+    // Update status and verified based on the action
+    organizer.status = status;
+
+    if (status === "approved") {
+      organizer.verified = true;
+      organizer.approvedBy = req.user._id;
+      organizer.approvedAt = new Date();
+    } else if (
+      status === "rejected" ||
+      status === "suspended" ||
+      status === "blocked"
+    ) {
+      organizer.verified = false;
+      if (status === "rejected") {
+        organizer.rejectedAt = new Date();
+      }
+    }
+
+    if (reason) {
+      organizer.approvalReason = reason;
+    }
+
+    await organizer.save();
+
     res.status(200).json({
       success: true,
-      data: organizer,
+      data: {
+        id: organizer._id,
+        name: organizer.name,
+        email: organizer.email,
+        organization: organizer.organization,
+        status: organizer.status,
+        verified: organizer.verified,
+        approvalReason: organizer.approvalReason,
+      },
     });
   } catch (error) {
     console.error("Error updating organizer status:", error);
