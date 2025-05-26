@@ -16,11 +16,14 @@ const eventOrganizerMiddleware = async (req, res, next) => {
       return res.status(404).json({ message: "Event not found" });
     }
 
+    // Get user ID from either req.user or req.organizer
+    const userId = req.user?._id || req.organizer?._id;
+
     // Check if user is admin or event organizer
     if (
-      req.user &&
-      (req.user.role === "admin" ||
-        event.organizer.toString() === req.user._id.toString())
+      userId &&
+      (req.user?.role === "admin" ||
+        event.organizer.toString() === userId.toString())
     ) {
       req.event = event; // Attach event to request for later use
       next();

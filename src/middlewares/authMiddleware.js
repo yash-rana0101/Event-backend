@@ -52,22 +52,29 @@ export const authMiddleware = async (req, res, next) => {
       });
     }
 
-    // Find user
+    // Find user first
     let user = await User.findById(decoded.id);
     if (user) {
-      // Set user in request
-      req.user = user;
+      // Set user in request with proper role information
+      req.user = {
+        _id: user._id,
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        isAdmin: user.role === "admin",
+      };
       return next();
     }
 
     // If not a regular user, try to find organizer
     let organizer = await Organizer.findById(decoded.id);
     if (organizer) {
-      // Set organizer in request
+      // Set organizer in request - keep existing structure
       req.organizer = organizer;
       req.user = {
-        _id: organizer._id, // Add this line to ensure consistent ID access
-        id: organizer._id, // For compatibility with existing code
+        _id: organizer._id,
+        id: organizer._id,
         role: "organizer",
         name: organizer.name,
         email: organizer.email,
@@ -104,12 +111,12 @@ export const authMiddleware = async (req, res, next) => {
   }
 };
 
-// Specific middleware for organizer routes
+// Specific middleware for organizer routes - keep existing implementation
 export const verifyOrganizerToken = async (req, res, next) => {
   try {
     // Get token from header
     const token = getTokenFromHeader(req);
-    console.log("hii");
+
     if (!token) {
       return res.status(401).json({
         message: "No token provided",
@@ -144,7 +151,6 @@ export const verifyOrganizerToken = async (req, res, next) => {
     req.user = organizer;
     req.organizer = organizer;
     req.userType = "organizer";
-    console.log("organizer", req.organizer);
     next();
   } catch (error) {
     console.error("Organizer auth middleware error:", error);
@@ -174,82 +180,37 @@ export const verifyOrganizerToken = async (req, res, next) => {
   }
 };
 
-// Create a middleware that accepts either user or organizer
-export const anyAuthMiddleware = async (req, res, next) => {
+// Add admin-specific middleware that only works for regular users
+export const adminMiddleware = async (req, res, next) => {
   try {
-    // Get token from header
-    const token = getTokenFromHeader(req);
+    // First run regular auth middleware
+    await new Promise((resolve, reject) => {
+      authMiddleware(req, res, (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
 
-    if (!token) {
-      return res.status(401).json({
-        message: "No token provided",
-        code: "NO_TOKEN",
+    // Check if it's a regular user (not organizer) with admin role
+    if (!req.user || req.user.role === "organizer") {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied. Admin privileges required.",
       });
     }
 
-    // Verify the token
-    const decoded = jwt.verify(
-      token,
-      config.jwtSecret || process.env.JWT_SECRET
-    );
-
-    if (!decoded || !decoded.id) {
-      return res.status(401).json({
-        message: "Invalid token",
-        code: "INVALID_TOKEN",
+    if (req.user.role !== "admin" && !req.user.isAdmin) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied. Admin privileges required.",
       });
-    }
-
-    // First try to find as a user
-    let user = await User.findById(decoded.id).select("-password");
-    let userType = "user";
-
-    // If not found as user, try organizer
-    if (!user) {
-      user = await Organizer.findById(decoded.id).select("-password");
-      userType = "organizer";
-    }
-
-    if (!user) {
-      return res.status(401).json({
-        message: "User not found",
-        code: "USER_NOT_FOUND",
-      });
-    }
-
-    // Attach user to request
-    req.user = user;
-    req.userType = userType;
-
-    // For backward compatibility
-    if (userType === "organizer") {
-      req.organizer = user;
     }
 
     next();
   } catch (error) {
-    console.error("Auth middleware error:", error);
-
-    if (error.name === "JsonWebTokenError") {
-      return res.status(401).json({
-        message: "Invalid token format",
-        code: "INVALID_TOKEN_FORMAT",
-        error: error.message,
-      });
-    }
-
-    if (error.name === "TokenExpiredError") {
-      return res.status(401).json({
-        message: "Token expired",
-        code: "TOKEN_EXPIRED",
-        error: error.message,
-      });
-    }
-
-    return res.status(401).json({
-      message: "Authentication failed",
-      code: "AUTH_FAILED",
-      error: error.message,
+    return res.status(500).json({
+      success: false,
+      message: "Authorization error",
     });
   }
 };
@@ -376,9 +337,90 @@ export const organizerAuthMiddleware = async (req, res, next) => {
   }
 };
 
+// Create a middleware that accepts either user or organizer
+export const anyAuthMiddleware = async (req, res, next) => {
+  try {
+    // Get token from header
+    const token = getTokenFromHeader(req);
+
+    if (!token) {
+      return res.status(401).json({
+        message: "No token provided",
+        code: "NO_TOKEN",
+      });
+    }
+
+    // Verify the token
+    const decoded = jwt.verify(
+      token,
+      config.jwtSecret || process.env.JWT_SECRET
+    );
+
+    if (!decoded || !decoded.id) {
+      return res.status(401).json({
+        message: "Invalid token",
+        code: "INVALID_TOKEN",
+      });
+    }
+
+    // First try to find as a user
+    let user = await User.findById(decoded.id).select("-password");
+    let userType = "user";
+
+    // If not found as user, try organizer
+    if (!user) {
+      user = await Organizer.findById(decoded.id).select("-password");
+      userType = "organizer";
+    }
+
+    if (!user) {
+      return res.status(401).json({
+        message: "User not found",
+        code: "USER_NOT_FOUND",
+      });
+    }
+
+    // Attach user to request
+    req.user = user;
+    req.userType = userType;
+
+    // For backward compatibility
+    if (userType === "organizer") {
+      req.organizer = user;
+    }
+
+    next();
+  } catch (error) {
+    console.error("Auth middleware error:", error);
+
+    if (error.name === "JsonWebTokenError") {
+      return res.status(401).json({
+        message: "Invalid token format",
+        code: "INVALID_TOKEN_FORMAT",
+        error: error.message,
+      });
+    }
+
+    if (error.name === "TokenExpiredError") {
+      return res.status(401).json({
+        message: "Token expired",
+        code: "TOKEN_EXPIRED",
+        error: error.message,
+      });
+    }
+
+    return res.status(401).json({
+      message: "Authentication failed",
+      code: "AUTH_FAILED",
+      error: error.message,
+    });
+  }
+};
+
 // Export as named exports and default object
 export default {
   authMiddleware,
+  adminMiddleware,
   verifyOrganizerToken,
   anyAuthMiddleware,
   getTokenFromHeader,

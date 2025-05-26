@@ -1,5 +1,8 @@
 import { Router } from "express";
-import { authMiddleware } from "../middlewares/authMiddleware.js";
+import {
+  authMiddleware,
+  adminMiddleware,
+} from "../middlewares/authMiddleware.js";
 import asyncHandler from "../utils/asyncHandler.js";
 import {
   getUserProfile,
@@ -15,6 +18,7 @@ import {
 } from "../controllers/userDashboardController.js";
 import Registration from "../models/Registration.js";
 import SavedEvent from "../models/SavedEvent.js";
+import User from "../models/User.js";
 
 const router = Router();
 
@@ -315,6 +319,32 @@ router.get(
       res.status(500).json({
         success: false,
         message: "Failed to fetch attended events",
+        error: error.message,
+      });
+    }
+  })
+);
+
+// Admin-only route for getting all user profiles
+router.get(
+  "/admin/all",
+  adminMiddleware,
+  asyncHandler(async (req, res) => {
+    try {
+      const users = await User.find({})
+        .select("-password")
+        .sort({ createdAt: -1 });
+
+      res.status(200).json({
+        success: true,
+        data: users,
+        count: users.length,
+      });
+    } catch (error) {
+      console.error("Error fetching all users:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to fetch users",
         error: error.message,
       });
     }

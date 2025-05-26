@@ -62,17 +62,27 @@ export const loginUser = async (req, res) => {
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
-    // Generate token with longer expiration (7 days)
-    const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, {
+    // Generate token with user ID (keeping consistent with existing pattern)
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
       expiresIn: "7d",
     });
 
+    // Calculate token expiry
+    const tokenExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+
+    // Return user data with role information
     res.status(200).json({
-      _id: user._id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
+      success: true,
+      user: {
+        _id: user._id,
+        id: user._id, // For compatibility
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        isAdmin: user.role === "admin",
+      },
       token,
+      tokenExpiry: tokenExpiry.toISOString(),
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
