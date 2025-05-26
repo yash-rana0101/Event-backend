@@ -5,6 +5,7 @@ import AppError from "../utils/AppError.js";
 import User from "../models/User.js";
 import mongoose from "mongoose";
 import OrganizerDetails from "../models/organizerDetailsModel.js";
+import { getAllOrganizers } from "./adminController.js";
 
 // Profile Management Functions
 export const getProfile = async (req, res) => {
@@ -695,6 +696,8 @@ export const getDashboardStats = async (req, res) => {
   }
 };
 
+// Export the const functions
+
 // Alias for backward compatibility
 export const getMe = getProfile;
 
@@ -710,6 +713,9 @@ const organizerController = {
   createOrganizerDetails,
   updateOrganizerDetails,
   getProfile,
+  getOrganizerProfile,
+  getAllOrganizers,
+  updateOrganizerProfile,
   getMe,
 };
 

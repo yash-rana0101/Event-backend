@@ -5,6 +5,7 @@ import Organizer from "../models/organizerModel.js";
 import OrganizerDetails from "../models/organizerDetailsModel.js";
 import SavedEvent from "../models/SavedEvent.js";
 import ApiResponse from "../utils/apiResponse.js";
+import { get } from "mongoose";
 
 // Dashboard Overview
 export const getDashboardOverview = async (req, res) => {
@@ -198,7 +199,8 @@ export const getAllOrganizers = async (req, res) => {
       ];
     }
 
-    if (status) query.status = status;
+    // Only filter by status if it's not 'all'
+    if (status && status !== "all") query.status = status;
 
     const organizers = await Organizer.find(query)
       .select("-password")
@@ -529,15 +531,152 @@ export const updateSystemConfig = async (req, res) => {
   }
 };
 
+export const getOrganizerStats = async (req, res) => {
+  try {
+    const stats = await Organizer.aggregate([
+      {
+        $group: {
+          _id: null,
+          totalOrganizers: { $sum: 1 },
+          activeOrganizers: {
+            $sum: { $cond: [{ $eq: ["$status", "active"] }, 1, 0] },
+          },
+          pendingOrganizers: {
+            $sum: { $cond: [{ $eq: ["$status", "pending"] }, 1, 0] },
+          },
+        },
+      },
+    ]);
+
+    res.status(200).json({
+      success: true,
+      data: stats[0] || {
+        totalOrganizers: 0,
+        activeOrganizers: 0,
+        pendingOrganizers: 0,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching organizer stats:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch organizer statistics",
+    });
+  }
+};
+
+export const updateOrganizerStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    const organizer = await Organizer.findByIdAndUpdate(
+      id,
+      { status },
+      { new: true, runValidators: true }
+    ).select("-password");
+
+    if (!organizer) {
+      return res.status(404).json({
+        success: false,
+        message: "Organizer not found",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: organizer,
+    });
+  } catch (error) {
+    console.error("Error updating organizer status:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to update organizer status",
+    });
+  }
+};
+
+// Fix the getOrganizerById function to be properly exported
+export const getOrganizerById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const organizer = await Organizer.findById(id)
+      .select("-password")
+      .populate(
+        "events",
+        "title status startDate endDate attendeesCount revenue"
+      )
+      .lean();
+
+    if (!organizer) {
+      return res.status(404).json({
+        success: false,
+        message: "Organizer not found",
+      });
+    }
+
+    // Get additional statistics
+    const eventStats = await Event.aggregate([
+      { $match: { organizer: organizer._id } },
+      {
+        $group: {
+          _id: null,
+          totalEvents: { $sum: 1 },
+          totalAttendees: { $sum: "$attendeesCount" },
+          totalRevenue: { $sum: "$revenue" },
+          avgRating: { $avg: "$rating" },
+        },
+      },
+    ]);
+
+    const stats = eventStats[0] || {
+      totalEvents: 0,
+      totalAttendees: 0,
+      totalRevenue: 0,
+      avgRating: 0,
+    };
+
+    const enhancedOrganizer = {
+      ...organizer,
+      statistics: stats,
+      avatar: organizer.name
+        .split(" ")
+        .map((word) => word[0])
+        .join("")
+        .toUpperCase()
+        .slice(0, 2),
+    };
+
+    return res.status(200).json({
+      success: true,
+      data: enhancedOrganizer,
+      message: "Organizer details fetched successfully",
+    });
+  } catch (error) {
+    console.error("Error fetching organizer by ID:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch organizer details",
+    });
+  }
+};
+
+// get all organizer
+
+// Export all controller functions for use in other modules
 export default {
   getDashboardOverview,
   getAllUsers,
   updateUserStatus,
-  getAllOrganizers,
+  getAllOrganizers, // <-- Make sure this is present
   approveOrganizer,
+  getOrganizerStats,
+  updateOrganizerStatus,
   deleteOrganizer,
   getAllEventsAdmin,
   approveEvent,
+  getOrganizerById,
   deleteEventAdmin,
   getAnalytics,
   getSystemConfig,

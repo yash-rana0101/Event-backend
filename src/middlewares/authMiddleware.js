@@ -417,13 +417,110 @@ export const anyAuthMiddleware = async (req, res, next) => {
   }
 };
 
-// Export as named exports and default object
+// Add a combined middleware that can handle both user and admin authentication
+export const userOrAdminMiddleware = async (req, res, next) => {
+  try {
+    // Get token from header first to validate format
+    const token = getTokenFromHeader(req);
+
+    // Check for missing or empty token
+    if (!token || typeof token !== "string" || token.trim() === "") {
+      return res.status(401).json({
+        success: false,
+        message: "Please log in to access this resource",
+      });
+    }
+
+    // Verify token format and decode
+    let decoded;
+    try {
+      decoded = jwt.verify(token, config.jwtSecret);
+    } catch (error) {
+      console.error("JWT verification error:", error);
+
+      if (error.name === "JsonWebTokenError") {
+        return res.status(401).json({
+          success: false,
+          message: "Invalid token format",
+        });
+      }
+
+      if (error.name === "TokenExpiredError") {
+        return res.status(401).json({
+          success: false,
+          message: "Token expired",
+        });
+      }
+
+      return res.status(401).json({
+        success: false,
+        message: "Authentication failed",
+      });
+    }
+
+    // Check if decoded ID is valid
+    if (!decoded.id) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid token format",
+      });
+    }
+
+    // Find user first
+    let user = await User.findById(decoded.id);
+    if (user) {
+      // Set user in request with proper role information
+      req.user = {
+        _id: user._id,
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        isAdmin: user.role === "admin",
+      };
+
+      // Allow both regular users and admins, but not organizers
+      if (user.role === "user" || user.role === "admin") {
+        return next();
+      } else {
+        return res.status(403).json({
+          success: false,
+          message: "Access denied. User or admin privileges required.",
+        });
+      }
+    }
+
+    // If not a regular user, check if it's an organizer (which we don't allow)
+    let organizer = await Organizer.findById(decoded.id);
+    if (organizer) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied. User or admin privileges required.",
+      });
+    }
+
+    // If no user or organizer found
+    return res.status(401).json({
+      success: false,
+      message: "User not found",
+    });
+  } catch (error) {
+    console.error("Authorization error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Authorization error",
+    });
+  }
+};
+
+// Export all middleware functions
 export default {
   authMiddleware,
   adminMiddleware,
   verifyOrganizerToken,
   anyAuthMiddleware,
-  getTokenFromHeader,
-  optionalAuth,
   organizerAuthMiddleware,
+  userOrAdminMiddleware,
+  optionalAuth,
+  getTokenFromHeader,
 };
