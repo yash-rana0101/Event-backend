@@ -202,6 +202,7 @@ export const getAllOrganizers = async (req, res) => {
     // Only filter by status if it's not 'all'
     if (status && status !== "all") query.status = status;
 
+    // Fetch organizers WITHOUT populate
     const organizers = await Organizer.find(query)
       .select("-password")
       .sort({ createdAt: -1 })
@@ -210,8 +211,35 @@ export const getAllOrganizers = async (req, res) => {
 
     const totalOrganizers = await Organizer.countDocuments(query);
 
+    // Fetch OrganizerDetails for all organizers in this page
+    const organizerIds = organizers.map((org) => org._id);
+    const detailsList = await OrganizerDetails.find({
+      organizer: { $in: organizerIds },
+    })
+      .select("organizer location phone bio title company")
+      .lean();
+
+    // Map for quick lookup
+    const detailsMap = {};
+    detailsList.forEach((details) => {
+      detailsMap[details.organizer.toString()] = details;
+    });
+
+    // Merge details into organizers
+    const organizersWithDetails = organizers.map((org) => {
+      const details = detailsMap[org._id.toString()] || {};
+      return {
+        ...org.toObject(),
+        location: details.location || null,
+        phone: details.phone || null,
+        bio: details.bio || null,
+        title: details.title || null,
+        company: details.company || null,
+      };
+    });
+
     return ApiResponse.success(res, "Organizers retrieved successfully", {
-      organizers,
+      organizers: organizersWithDetails,
       pagination: {
         total: totalOrganizers,
         page: parseInt(page),
@@ -601,13 +629,8 @@ export const getOrganizerById = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const organizer = await Organizer.findById(id)
-      .select("-password")
-      .populate(
-        "events",
-        "title status startDate endDate attendeesCount revenue"
-      )
-      .lean();
+    // Fetch organizer without populating events
+    const organizer = await Organizer.findById(id).select("-password").lean();
 
     if (!organizer) {
       return res.status(404).json({
@@ -615,6 +638,11 @@ export const getOrganizerById = async (req, res) => {
         message: "Organizer not found",
       });
     }
+
+    // Fetch events for this organizer
+    const events = await Event.find({ organizer: organizer._id })
+      .select("title status startDate endDate attendeesCount revenue")
+      .lean();
 
     // Get additional statistics
     const eventStats = await Event.aggregate([
@@ -639,6 +667,7 @@ export const getOrganizerById = async (req, res) => {
 
     const enhancedOrganizer = {
       ...organizer,
+      events, // add events array
       statistics: stats,
       avatar: organizer.name
         .split(" ")
