@@ -289,31 +289,6 @@ const buildUpdateData = (section, data) => {
   return updateMappings[section] || null;
 };
 
-// Generate API key with admin check
-export const generateApiKey = async (req, res) => {
-  const userId = req.user._id;
-
-  // Check if user is admin
-  if (req.user.role !== "admin") {
-    throw new ApiError(403, "Admin access required");
-  }
-
-  const apiKey = "api_key_" + crypto.randomBytes(32).toString("hex");
-
-  logInfo("Generating new API key", { userId });
-
-  // Update settings
-  await Settings.findOneAndUpdate({ userId }, { apiKey }, { upsert: true });
-
-  logInfo("API key generated successfully", { userId });
-
-  res.status(200).json({
-    success: true,
-    message: "API key generated successfully",
-    data: { apiKey },
-  });
-};
-
 // Upload avatar with admin check and Cloudinary integration
 export const uploadAvatar = async (req, res) => {
   if (!req.file) {
@@ -400,85 +375,7 @@ export const uploadAvatar = async (req, res) => {
   }
 };
 
-// Change password with admin check and proper validation
-export const changePassword = async (req, res) => {
-  try {
-    const { currentPassword, newPassword } = req.body;
-    const userId = req.user.id || req.user._id;
 
-    logInfo("Changing password", { userId });
-
-    // Check if user is admin
-    if (req.user.role !== "admin") {
-      throw new ApiError(403, "Admin access required");
-    }
-
-    // Validate input
-    if (!currentPassword || !newPassword) {
-      return res.status(400).json({
-        success: false,
-        message: "Current password and new password are required",
-      });
-    }
-
-    if (newPassword.length < 6) {
-      return res.status(400).json({
-        success: false,
-        message: "New password must be at least 6 characters long",
-      });
-    }
-
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found",
-      });
-    }
-
-    // Check if user has a password (some users might have been created without password)
-    if (!user.password) {
-      return res.status(400).json({
-        success: false,
-        message: "No password set for this account",
-      });
-    }
-
-    // Verify current password
-    const isCurrentPasswordValid = await bcrypt.compare(
-      currentPassword,
-      user.password
-    );
-    if (!isCurrentPasswordValid) {
-      return res.status(400).json({
-        success: false,
-        message: "Current password is incorrect",
-      });
-    }
-
-    // Hash new password
-    const saltRounds = 10;
-    const hashedNewPassword = await bcrypt.hash(newPassword, saltRounds);
-
-    // Update password
-    await User.findByIdAndUpdate(userId, {
-      password: hashedNewPassword,
-    });
-
-    logInfo("Password changed successfully", { userId });
-
-    res.status(200).json({
-      success: true,
-      message: "Password changed successfully",
-    });
-  } catch (error) {
-    logError("Error changing password", { userId, error: error.message });
-    res.status(500).json({
-      success: false,
-      message: "Internal server error",
-    });
-  }
-};
 
 // Create backup with admin check
 export const createBackup = async (req, res) => {

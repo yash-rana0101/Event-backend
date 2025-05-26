@@ -6,12 +6,10 @@ import { apiLimiter } from "../middlewares/securityMiddleware.js";
 import {
   getSettings,
   updateSettings,
-  generateApiKey,
   createBackup,
   uploadAvatar,
   downloadBackup,
   restoreBackup,
-  changePassword,
 } from "../controllers/settingsController.js";
 
 const router = express.Router();
@@ -46,21 +44,6 @@ router.get("/", authMiddleware, adminMiddleware, catchAsync(getSettings));
 // Update specific settings section (removed validation temporarily to fix issues)
 router.put("/", authMiddleware, adminMiddleware, catchAsync(updateSettings));
 
-// Change password
-router.put(
-  "/change-password",
-  authMiddleware,
-  adminMiddleware,
-  catchAsync(changePassword)
-);
-
-// Generate new API key
-router.post(
-  "/generate-api-key",
-  authMiddleware,
-  adminMiddleware,
-  catchAsync(generateApiKey)
-);
 
 // Create backup
 router.post(

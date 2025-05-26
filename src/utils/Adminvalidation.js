@@ -95,3 +95,4 @@ const validateSettings = (section, data) => {
 };
 
 export default { validateSettings };
+export { validateSettings };
