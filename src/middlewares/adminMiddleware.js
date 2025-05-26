@@ -26,11 +26,11 @@ const adminMiddleware = async (req, res, next) => {
       });
     }
 
-    // Check if user has admin role
+    // Check if user has admin role - strict check
     if (user.role !== "admin") {
       return res.status(403).json({
         success: false,
-        message: "Access denied. Admin privileges required.",
+        message: "Access denied. Administrator privileges required.",
       });
     }
 

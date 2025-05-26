@@ -126,6 +126,18 @@ const schemas = {
       shares: Joi.number().default(0),
     }).default({}),
   }),
+  updateSettings: Joi.object({
+    section: Joi.string().valid(
+      "profile",
+      "security",
+      "notifications",
+      "system",
+      "appearance",
+      "api",
+      "backup"
+    ),
+    data: Joi.object().required(),
+  }),
 };
 
 // Validation middleware

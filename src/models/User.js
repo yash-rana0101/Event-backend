@@ -26,12 +26,52 @@ const UserSchema = new mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ["user", "admin"],
+      enum: ["user", "admin", "organizer"],
       default: "user",
     },
     phone: {
       type: String,
       required: false,
+      trim: true,
+    },
+    firstName: {
+      type: String,
+      trim: true,
+    },
+    lastName: {
+      type: String,
+      trim: true,
+    },
+    avatar: {
+      type: String,
+    },
+    bio: {
+      type: String,
+      maxlength: 500,
+    },
+    timezone: {
+      type: String,
+      default: "UTC-8",
+    },
+    language: {
+      type: String,
+      default: "English",
+    },
+    emailNotifications: {
+      type: Boolean,
+      default: true,
+    },
+    smsNotifications: {
+      type: Boolean,
+      default: false,
+    },
+    pushNotifications: {
+      type: Boolean,
+      default: true,
+    },
+    marketingEmails: {
+      type: Boolean,
+      default: false,
     },
   },
   {

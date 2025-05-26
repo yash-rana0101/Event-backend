@@ -5,6 +5,7 @@ import morgan from "morgan";
 import helmet from "helmet";
 import compression from "compression";
 import { EventEmitter } from "events";
+import { setupDirectories } from "./src/utils/setupDirectories.js";
 
 // Set max listeners to a higher value to avoid warnings
 EventEmitter.defaultMaxListeners = 25; // Increased from 20 to 25
@@ -135,5 +136,8 @@ process.on("uncaughtException", (error) => {
   console.error("Uncaught Exception:", error);
   gracefulShutdown();
 });
+
+// Setup required directories
+setupDirectories();
 
 export default app;
