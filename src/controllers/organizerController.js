@@ -6,56 +6,62 @@ import User from "../models/User.js";
 import mongoose from "mongoose";
 import OrganizerDetails from "../models/organizerDetailsModel.js";
 
-// First, define the getProfile function separately so we can reuse it
-const getProfile = async (req, res) => {
+// Profile Management Functions
+export const getProfile = async (req, res) => {
   try {
     const organizer = req.organizer || req.user;
 
     if (!organizer) {
-      return res.status(404).json({ message: "Organizer not found" });
+      return res.status(404).json({
+        success: false,
+        message: "Organizer not found",
+      });
     }
 
-    // Remove sensitive data before sending
     const { password, ...organizerData } = organizer._doc || organizer;
 
-    res.status(200).json(organizerData);
+    res.status(200).json({
+      success: true,
+      data: organizerData,
+    });
   } catch (error) {
     console.error("Error fetching organizer profile:", error);
-    res.status(500).json({ message: "Failed to retrieve profile" });
+    res.status(500).json({
+      success: false,
+      message: "Failed to retrieve profile",
+    });
   }
 };
 
-// Extract the getOrganizerProfile function to be exported separately
 export const getOrganizerProfile = async (req, res) => {
   try {
     const organizerId = req.params.id;
 
     console.log("Fetching organizer profile for ID:", organizerId);
 
-    // Fetch basic organizer details
     const organizer = await Organizer.findById(organizerId).select("-password");
 
     if (!organizer) {
-      return res.status(404).json({ message: "Organizer not found" });
+      return res.status(404).json({
+        success: false,
+        message: "Organizer not found",
+      });
     }
 
-    // Fetch detailed organizer profile information
     const organizerDetails = await OrganizerDetails.findOne({
       organizer: organizerId,
     });
 
-    // Fetch events organized by the organizer
     const events = await Event.find({ organizer: organizerId }).select(
       "title startDate location attendeesCount category status description highlights images price"
     );
 
-    // Get testimonials from the organizer details
     let testimonials = [];
-    if (organizerDetails && organizerDetails.testimonials) {
+    if (organizerDetails?.testimonials) {
       testimonials = organizerDetails.testimonials;
     }
 
-    // Try to get additional testimonials from a Feedback model if it exists
+    // Try to get additional testimonials from Feedback model
     try {
       const Feedback = mongoose.model("Feedback");
       const feedbacks = await Feedback.find({
@@ -67,7 +73,6 @@ export const getOrganizerProfile = async (req, res) => {
         .sort({ createdAt: -1 })
         .limit(10);
 
-      // Convert feedbacks to testimonial format
       const feedbackTestimonials = feedbacks.map((feedback) => ({
         name: feedback.user?.name || "Anonymous",
         comment: feedback.comment,
@@ -75,17 +80,12 @@ export const getOrganizerProfile = async (req, res) => {
         date: feedback.createdAt,
       }));
 
-      // Combine testimonials from both sources
       testimonials = [...testimonials, ...feedbackTestimonials];
     } catch (feedbackError) {
-      console.log(
-        "Feedback model not available or error fetching feedbacks:",
-        feedbackError.message
-      );
-      // Continue without additional feedbacks
+      console.log("Feedback model not available:", feedbackError.message);
     }
 
-    // Calculate organizer statistics
+    // Calculate statistics
     const totalEvents = events.length;
     const upcomingEvents = events.filter(
       (event) => new Date(event.startDate) > new Date()
@@ -99,7 +99,6 @@ export const getOrganizerProfile = async (req, res) => {
       0
     );
 
-    // Build comprehensive profile response
     const profileResponse = {
       organizer: {
         _id: organizer._id,
@@ -150,27 +149,27 @@ export const getOrganizerProfile = async (req, res) => {
   }
 };
 
-// Also export updateOrganizerProfile which is likely needed
 export const updateOrganizerProfile = async (req, res) => {
   try {
     const organizerId = req.params.id;
     const updateData = req.body;
 
-    // Check if organizer exists
     const organizer = await Organizer.findById(organizerId);
 
     if (!organizer) {
-      return res.status(404).json({ message: "Organizer not found" });
+      return res.status(404).json({
+        success: false,
+        message: "Organizer not found",
+      });
     }
 
-    // Check if the requesting user has permission to update
     if (req.organizer._id.toString() !== organizerId) {
-      return res
-        .status(403)
-        .json({ message: "Not authorized to update this profile" });
+      return res.status(403).json({
+        success: false,
+        message: "Not authorized to update this profile",
+      });
     }
 
-    // Update organizer info
     const updatedOrganizer = await Organizer.findByIdAndUpdate(
       organizerId,
       updateData,
@@ -179,432 +178,539 @@ export const updateOrganizerProfile = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      organizer: updatedOrganizer,
+      data: updatedOrganizer,
     });
   } catch (error) {
     console.error("Error updating organizer profile:", error);
-    res.status(500).json({ message: "Failed to update profile" });
+    res.status(500).json({
+      success: false,
+      message: "Failed to update profile",
+    });
   }
 };
 
-// Define the controller object
-const organizerController = {
-  async register(req, res) {
-    try {
-      const { name, email, password, organization } = req.body;
+// Authentication Functions
+export const registerOrganizer = async (req, res) => {
+  try {
+    const { name, email, password, organization, phone } = req.body;
 
-      let existingUser = await User.findOne({
-        $or: [{ email }, { name }],
+    if (!name || !email || !password || !organization) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Please provide all required fields: name, email, password, and organization",
       });
-      let existingOrganizer = await Organizer.findOne({
-        $or: [{ email }, { name }],
+    }
+
+    if (password.length < 8) {
+      return res.status(400).json({
+        success: false,
+        message: "Password must be at least 8 characters long",
       });
+    }
 
-      if (existingUser) {
-        return res.status(409).json({
-          success: false,
-          message: "User already exists with that email or name",
-        });
-      }
+    const [existingUser, existingOrganizer] = await Promise.all([
+      User.findOne({ $or: [{ email }, { name }] }),
+      Organizer.findOne({ $or: [{ email }, { name }] }),
+    ]);
 
-      if (existingOrganizer) {
-        return res.status(409).json({
-          success: false,
-          message: "User already exists with that email or name",
-        });
-      }
+    if (existingUser || existingOrganizer) {
+      return res.status(409).json({
+        success: false,
+        message: "User or organizer already exists with that email or name",
+      });
+    }
 
-      const organizer = await Organizer.create({
+    const organizerData = {
+      name,
+      email,
+      password,
+      organization,
+      ...(phone && { phone }),
+    };
+
+    const organizer = await Organizer.create(organizerData);
+
+    const token = jwt.sign({ id: organizer._id }, process.env.JWT_SECRET, {
+      expiresIn: "7d",
+    });
+
+    res.status(201).json({
+      success: true,
+      token,
+      organizer: {
+        id: organizer._id,
         name,
         email,
-        password,
         organization,
-      });
+        ...(phone && { phone }),
+      },
+    });
+  } catch (error) {
+    console.error("Registration error:", error);
 
-      const token = jwt.sign({ id: organizer._id }, process.env.JWT_SECRET, {
-        expiresIn: "1d",
-      });
-
-      res.status(200).json({
-        token,
-        organizer: {
-          id: organizer._id,
-          name,
-          email,
-          organization,
-        },
-      });
-    } catch (error) {
-      res.status(500).json({ message: error.message });
-    }
-  },
-
-  // Add login function
-  async login(req, res) {
-    try {
-      const { email, password } = req.body;
-
-      if (!email || !password) {
-        return res.status(400).json({
-          success: false,
-          message: "Please provide email and password",
-        });
-      }
-
-      // Find the organizer by email
-      const organizer = await Organizer.findOne({ email });
-
-      if (!organizer) {
-        return res.status(401).json({
-          success: false,
-          message: "Invalid credentials",
-        });
-      }
-
-      // Check if password is correct
-      const isPasswordCorrect = await organizer.comparePassword(password);
-
-      if (!isPasswordCorrect) {
-        return res.status(401).json({
-          success: false,
-          message: "Invalid credentials",
-        });
-      }
-
-      // Generate token with longer expiration (7 days)
-      const token = jwt.sign({ id: organizer._id }, process.env.JWT_SECRET, {
-        expiresIn: "7d",
-      });
-
-      // Return success with token and organizer data
-      res.status(200).json({
-        success: true,
-        token,
-        user: {
-          id: organizer._id,
-          name: organizer.name,
-          email: organizer.email,
-          organization: organizer.organization,
-        },
-      });
-    } catch (error) {
-      console.error("Login error:", error);
-      res.status(500).json({ message: error.message || "Login failed" });
-    }
-  },
-
-  // Event Management
-  async createEvent(req, res) {
-    try {
-      // Log the received data
-      console.log("Creating event with data:", req.body);
-      console.log("Organizer ID:", req.organizer._id);
-
-      // Make sure we have a valid organizer
-      if (!req.organizer || !req.organizer._id) {
-        return res.status(401).json({
-          success: false,
-          message: "Unauthorized - valid organizer account required",
-        });
-      }
-
-      // Create the event with the organizer's ID
-      const event = await Event.create({
-        ...req.body,
-        organizer: req.organizer._id,
-      });
-
-      console.log("Event created successfully:", event._id);
-
-      res.status(201).json({
-        success: true,
-        message: "Event created successfully",
-        event,
-      });
-    } catch (error) {
-      console.error("Error creating event:", error);
-      res.status(400).json({
-        success: false,
-        message: error.message || "Event creation failed",
-      });
-    }
-  },
-
-  async getOrganizerEvents(req, res) {
-    try {
-      const events = await Event.find({ organizer: req.organizer._id });
-      res.json(events);
-    } catch (error) {
-      res.status(400).json({ message: error.message });
-    }
-  },
-
-  async getEventAnalytics(req, res) {
-    try {
-      const { eventId } = req.params;
-
-      const analytics = await Event.aggregate([
-        {
-          $match: {
-            _id: mongoose.Types.ObjectId(eventId),
-            organizer: req.organizer._id,
-          },
-        },
-        {
-          $lookup: {
-            from: "tickets",
-            localField: "_id",
-            foreignField: "event",
-            as: "tickets",
-          },
-        },
-        {
-          $project: {
-            totalAttendees: { $size: "$tickets" },
-            revenue: { $sum: "$tickets.price" },
-            checkInRate: {
-              $multiply: [
-                {
-                  $divide: [
-                    {
-                      $size: {
-                        $filter: {
-                          input: "$tickets",
-                          as: "ticket",
-                          cond: { $eq: ["$$ticket.checkedIn", true] },
-                        },
-                      },
-                    },
-                    { $size: "$tickets" },
-                  ],
-                },
-                100,
-              ],
-            },
-          },
-        },
-      ]).allowDiskUse(true);
-
-      if (!analytics[0]) {
-        throw new AppError("Event not found", 404);
-      }
-
-      res.json(analytics[0]);
-    } catch (error) {
-      res.status(500).json({ message: error.message });
-    }
-  },
-
-  async getDashboardStats(req, res) {
-    try {
-      const stats = await Event.aggregate([
-        { $match: { organizer: req.organizer._id } },
-        {
-          $facet: {
-            summary: [
-              {
-                $group: {
-                  _id: null,
-                  totalEvents: { $sum: 1 },
-                  upcomingEvents: {
-                    $sum: {
-                      $cond: [{ $gt: ["$startDate", new Date()] }, 1, 0],
-                    },
-                  },
-                  totalRevenue: { $sum: "$revenue" },
-                },
-              },
-            ],
-            recentEvents: [
-              { $sort: { startDate: -1 } },
-              { $limit: 5 },
-              {
-                $project: {
-                  title: 1,
-                  startDate: 1,
-                  attendeeCount: 1,
-                },
-              },
-            ],
-          },
-        },
-      ]).allowDiskUse(true);
-
-      const dashboardStats = {
-        ...stats[0].summary[0],
-        recentEvents: stats[0].recentEvents,
-      };
-
-      res.json(dashboardStats);
-    } catch (error) {
-      res.status(500).json({ message: error.message });
-    }
-  },
-
-  async getOrganizerDetails(req, res) {
-    try {
-      const { organizerId } = req.params;
-
-      if (!organizerId) {
-        return res.status(400).json({ message: "Organizer ID is required" });
-      }
-
-      // Check if user has permission (if not the owner, verify if details are public)
-      const isOwner =
-        req.organizer && req.organizer._id.toString() === organizerId;
-
-      // Find the organizer's details
-      const details = await OrganizerDetails.findOne({
-        organizer: organizerId,
-      });
-
-      if (!details) {
-        return res.status(404).json({ message: "Organizer details not found" });
-      }
-
-      // If not the owner and details are private, return limited information
-      if (!isOwner && details.isPrivate) {
-        // Return only public fields
-        const publicDetails = {
-          name: details.name,
-          title: details.title,
-          company: details.company,
-          // Add other fields you want to make public
-        };
-        return res.json(publicDetails);
-      }
-
-      // Return full details
-      res.json(details);
-    } catch (error) {
-      console.error("Error fetching organizer details:", error);
-      res.status(500).json({ message: "Failed to retrieve organizer details" });
-    }
-  },
-
-  async createOrganizerDetails(req, res) {
-    try {
-      const { organizerId } = req.params;
-      const organizerDetails = req.body;
-
-      // Validate that the organizer exists
-      const organizer = await Organizer.findById(organizerId);
-      if (!organizer) {
-        return res.status(404).json({ message: "Organizer not found" });
-      }
-
-      // Check permissions - only the organizer themself or an admin can update
-      const requestUserId =
-        req.organizer?._id?.toString() || req.user?._id?.toString();
-      if (requestUserId !== organizerId && req.user?.role !== "admin") {
-        return res.status(403).json({
-          message: "Access denied - you can only update your own profile",
-          requestUserId,
-          organizerId,
-        });
-      }
-
-      // Find existing details
-      let existingDetails = await OrganizerDetails.findOne({
-        organizer: organizerId,
-      });
-
-      // For updated tags, ensure it's an array
-      if (organizerDetails.tags && typeof organizerDetails.tags === "string") {
-        organizerDetails.tags = organizerDetails.tags
-          .split(",")
-          .map((tag) => tag.trim())
-          .filter(Boolean);
-      }
-
-      // Create or update
-      let result;
-
-      if (existingDetails) {
-        // Update existing details
-        result = await OrganizerDetails.findOneAndUpdate(
-          { organizer: organizerId },
-          organizerDetails,
-          { new: true, runValidators: true }
-        );
-      } else {
-        // Create new details
-        const newDetails = new OrganizerDetails({
-          ...organizerDetails,
-          organizer: organizerId,
-        });
-        result = await newDetails.save();
-      }
-
-      // Set flag on the organizer model that details are complete
-      await Organizer.findByIdAndUpdate(organizerId, {
-        profileComplete: true,
-      });
-
-      return res.status(200).json(result);
-    } catch (error) {
-      console.error("Error creating/updating organizer details:", error);
-      return res.status(500).json({
-        message: "Failed to create/update organizer details",
-        error: error.message,
-      });
-    }
-  },
-
-  async updateOrganizerDetails(req, res) {
-    try {
-      const { organizerId } = req.params;
-      const updatedDetails = req.body;
-
-      // Permission check
-      const requestUserId =
-        req.organizer?._id?.toString() || req.user?._id?.toString();
-      if (requestUserId !== organizerId && req.user?.role !== "admin") {
-        return res.status(403).json({ message: "Access denied" });
-      }
-
-      // Parse tags if provided as string
-      if (updatedDetails.tags && typeof updatedDetails.tags === "string") {
-        updatedDetails.tags = updatedDetails.tags
-          .split(",")
-          .map((tag) => tag.trim())
-          .filter(Boolean);
-      }
-
-      const result = await OrganizerDetails.findOneAndUpdate(
-        { organizer: organizerId },
-        updatedDetails,
-        { new: true, runValidators: true }
+    if (error.name === "ValidationError") {
+      const validationErrors = Object.values(error.errors).map(
+        (err) => err.message
       );
-
-      if (!result) {
-        return res.status(404).json({ message: "Organizer details not found" });
-      }
-
-      // Set flag on the organizer model that details are complete
-      await Organizer.findByIdAndUpdate(organizerId, {
-        profileComplete: true,
-      });
-
-      return res.status(200).json(result);
-    } catch (error) {
-      console.error("Error updating organizer details:", error);
-      return res.status(500).json({
-        message: "Failed to update organizer details",
-        error: error.message,
+      return res.status(400).json({
+        success: false,
+        message: "Validation failed",
+        errors: validationErrors,
       });
     }
-  },
 
-  // Add the getProfile function to the controller
-  getProfile,
+    if (error.code === 11000) {
+      const field = Object.keys(error.keyPattern)[0];
+      return res.status(409).json({
+        success: false,
+        message: `${field} already exists`,
+      });
+    }
 
-  // Use the same function for getMe endpoint
-  getMe: getProfile, // Reference the function directly instead of using this
+    res.status(500).json({
+      success: false,
+      message: error.message || "Registration failed",
+    });
+  }
 };
 
-// Export the registerOrganizer and loginOrganizer functions
-export const registerOrganizer = organizerController.register;
-export const loginOrganizer = organizerController.login;
+export const loginOrganizer = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide email and password",
+      });
+    }
+
+    const organizer = await Organizer.findOne({ email });
+
+    if (!organizer) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid credentials",
+      });
+    }
+
+    const isPasswordCorrect = await organizer.comparePassword(password);
+
+    if (!isPasswordCorrect) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid credentials",
+      });
+    }
+
+    const token = jwt.sign({ id: organizer._id }, process.env.JWT_SECRET, {
+      expiresIn: "7d",
+    });
+
+    res.status(200).json({
+      success: true,
+      token,
+      user: {
+        id: organizer._id,
+        name: organizer.name,
+        email: organizer.email,
+        organization: organizer.organization,
+      },
+    });
+  } catch (error) {
+    console.error("Login error:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Login failed",
+    });
+  }
+};
+
+// Details Management Functions
+export const getOrganizerDetails = async (req, res) => {
+  try {
+    const organizerId = req.params.organizerId || req.params.id;
+
+    if (!organizerId) {
+      return res.status(400).json({
+        success: false,
+        message: "Organizer ID is required",
+      });
+    }
+
+    const isOwner =
+      req.organizer && req.organizer._id.toString() === organizerId;
+
+    const details = await OrganizerDetails.findOne({
+      organizer: organizerId,
+    });
+
+    if (!details) {
+      return res.status(404).json({
+        success: false,
+        message: "Organizer details not found",
+      });
+    }
+
+    if (!isOwner && details.isPrivate) {
+      const publicDetails = {
+        name: details.name,
+        title: details.title,
+        company: details.company,
+      };
+      return res.json({
+        success: true,
+        data: publicDetails,
+      });
+    }
+
+    res.json({
+      success: true,
+      data: details,
+    });
+  } catch (error) {
+    console.error("Error fetching organizer details:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to retrieve organizer details",
+    });
+  }
+};
+
+export const createOrganizerDetails = async (req, res) => {
+  try {
+    const organizerId = req.params.id || req.organizer?._id;
+    const organizerDetails = req.body;
+
+    console.log("Creating organizer details for ID:", organizerId);
+
+    if (!organizerId) {
+      return res.status(400).json({
+        success: false,
+        message: "Organizer ID is required",
+      });
+    }
+
+    const organizer = await Organizer.findById(organizerId);
+    if (!organizer) {
+      return res.status(404).json({
+        success: false,
+        message: "Organizer not found",
+      });
+    }
+
+    const requestUserId = req.organizer?._id?.toString();
+    if (requestUserId !== organizerId) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied - you can only update your own profile",
+      });
+    }
+
+    if (
+      !organizerDetails.title ||
+      !organizerDetails.bio ||
+      !organizerDetails.location
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Title, bio, and location are required fields",
+      });
+    }
+
+    // Process arrays if they come as strings
+    const processedDetails = { ...organizerDetails };
+
+    if (
+      processedDetails.expertise &&
+      typeof processedDetails.expertise === "string"
+    ) {
+      processedDetails.expertise = processedDetails.expertise
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean);
+    }
+
+    if (
+      processedDetails.certifications &&
+      typeof processedDetails.certifications === "string"
+    ) {
+      processedDetails.certifications = processedDetails.certifications
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean);
+    }
+
+    const existingDetails = await OrganizerDetails.findOne({
+      organizer: organizerId,
+    });
+
+    let result;
+
+    if (existingDetails) {
+      result = await OrganizerDetails.findOneAndUpdate(
+        { organizer: organizerId },
+        processedDetails,
+        { new: true, runValidators: true }
+      );
+    } else {
+      const newDetails = new OrganizerDetails({
+        ...processedDetails,
+        organizer: organizerId,
+      });
+      result = await newDetails.save();
+    }
+
+    await Organizer.findByIdAndUpdate(organizerId, {
+      profileComplete: true,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Organizer details saved successfully",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error creating/updating organizer details:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to create/update organizer details",
+      error: error.message,
+    });
+  }
+};
+
+export const updateOrganizerDetails = async (req, res) => {
+  try {
+    const organizerId = req.params.organizerId || req.params.id;
+    const updatedDetails = req.body;
+
+    const requestUserId =
+      req.organizer?._id?.toString() || req.user?._id?.toString();
+    if (requestUserId !== organizerId && req.user?.role !== "admin") {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied",
+      });
+    }
+
+    if (updatedDetails.tags && typeof updatedDetails.tags === "string") {
+      updatedDetails.tags = updatedDetails.tags
+        .split(",")
+        .map((tag) => tag.trim())
+        .filter(Boolean);
+    }
+
+    const result = await OrganizerDetails.findOneAndUpdate(
+      { organizer: organizerId },
+      updatedDetails,
+      { new: true, runValidators: true }
+    );
+
+    if (!result) {
+      return res.status(404).json({
+        success: false,
+        message: "Organizer details not found",
+      });
+    }
+
+    await Organizer.findByIdAndUpdate(organizerId, {
+      profileComplete: true,
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error updating organizer details:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update organizer details",
+      error: error.message,
+    });
+  }
+};
+
+// Event Management Functions
+export const createEvent = async (req, res) => {
+  try {
+    console.log("Creating event with data:", req.body);
+
+    if (!req.organizer?._id) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized - valid organizer account required",
+      });
+    }
+
+    const event = await Event.create({
+      ...req.body,
+      organizer: req.organizer._id,
+    });
+
+    console.log("Event created successfully:", event._id);
+
+    res.status(201).json({
+      success: true,
+      message: "Event created successfully",
+      data: event,
+    });
+  } catch (error) {
+    console.error("Error creating event:", error);
+    res.status(400).json({
+      success: false,
+      message: error.message || "Event creation failed",
+    });
+  }
+};
+
+export const getOrganizerEvents = async (req, res) => {
+  try {
+    const events = await Event.find({ organizer: req.organizer._id });
+    res.json({
+      success: true,
+      data: events,
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+export const getEventAnalytics = async (req, res) => {
+  try {
+    const { eventId } = req.params;
+
+    const analytics = await Event.aggregate([
+      {
+        $match: {
+          _id: mongoose.Types.ObjectId(eventId),
+          organizer: req.organizer._id,
+        },
+      },
+      {
+        $lookup: {
+          from: "tickets",
+          localField: "_id",
+          foreignField: "event",
+          as: "tickets",
+        },
+      },
+      {
+        $project: {
+          totalAttendees: { $size: "$tickets" },
+          revenue: { $sum: "$tickets.price" },
+          checkInRate: {
+            $multiply: [
+              {
+                $divide: [
+                  {
+                    $size: {
+                      $filter: {
+                        input: "$tickets",
+                        as: "ticket",
+                        cond: { $eq: ["$$ticket.checkedIn", true] },
+                      },
+                    },
+                  },
+                  { $size: "$tickets" },
+                ],
+              },
+              100,
+            ],
+          },
+        },
+      },
+    ]).allowDiskUse(true);
+
+    if (!analytics[0]) {
+      throw new AppError("Event not found", 404);
+    }
+
+    res.json({
+      success: true,
+      data: analytics[0],
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+export const getDashboardStats = async (req, res) => {
+  try {
+    const stats = await Event.aggregate([
+      { $match: { organizer: req.organizer._id } },
+      {
+        $facet: {
+          summary: [
+            {
+              $group: {
+                _id: null,
+                totalEvents: { $sum: 1 },
+                upcomingEvents: {
+                  $sum: {
+                    $cond: [{ $gt: ["$startDate", new Date()] }, 1, 0],
+                  },
+                },
+                totalRevenue: { $sum: "$revenue" },
+              },
+            },
+          ],
+          recentEvents: [
+            { $sort: { startDate: -1 } },
+            { $limit: 5 },
+            {
+              $project: {
+                title: 1,
+                startDate: 1,
+                attendeeCount: 1,
+              },
+            },
+          ],
+        },
+      },
+    ]).allowDiskUse(true);
+
+    const dashboardStats = {
+      ...stats[0].summary[0],
+      recentEvents: stats[0].recentEvents,
+    };
+
+    res.json({
+      success: true,
+      data: dashboardStats,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+// Alias for backward compatibility
+export const getMe = getProfile;
+
+// Default export for backward compatibility
+const organizerController = {
+  register: registerOrganizer,
+  login: loginOrganizer,
+  createEvent,
+  getOrganizerEvents,
+  getEventAnalytics,
+  getDashboardStats,
+  getOrganizerDetails,
+  createOrganizerDetails,
+  updateOrganizerDetails,
+  getProfile,
+  getMe,
+};
 
 export default organizerController;

@@ -21,6 +21,7 @@ import teamRoutes from "./src/routes/teamRoutes.js";
 import organizerRoutes from "./src/routes/organizerRoutes.js";
 import userProfileRoutes from "./src/routes/userProfileRoutes.js";
 import reviewRoutes from "./src/routes/reviewRoutes.js"; // Add this line
+import adminRoutes from "./src/routes/adminRoutes.js";
 
 // Import middleware
 import { authMiddleware } from "./src/middlewares/authMiddleware.js"; // Import as named export
@@ -75,36 +76,9 @@ app.use("/api/v1/notifications", notificationRoutes);
 app.use("/api/v1/reports", reportRoutes);
 app.use("/api/v1/members", memberRoutes);
 app.use("/api/v1/teams", teamRoutes);
-app.use("/api/v1/reviews", reviewRoutes); // Add this line
+app.use("/api/v1/reviews", reviewRoutes);
+app.use("/api/v1/admin", adminRoutes);
 
-// Health check route
-app.get("/api/v1/health", async (req, res) => {
-  try {
-    res.status(200).json({
-      status: "ok",
-      message: "Server is running",
-      mongodb: getMongoConnectionStatus(),
-      timestamp: new Date().toISOString(),
-    });
-  } catch (error) {
-    res.status(500).json({
-      status: "error",
-      message: "Service partially degraded",
-      mongodb: getMongoConnectionStatus(),
-      timestamp: new Date().toISOString(),
-    });
-  }
-});
-
-// Database connection status endpoint
-app.get("/api/v1/db-status", (req, res) => {
-  const status = getMongoConnectionStatus();
-  res.json({
-    status: status === "connected" ? "ok" : "degraded",
-    dbConnection: status,
-    timestamp: new Date().toISOString(),
-  });
-});
 
 // Root route
 app.get("/", (req, res) => {

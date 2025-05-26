@@ -26,23 +26,23 @@ router.post("/register", validate("register"), async (req, res) => {
 
     // Check if user already exists
     let existingUser = await User.findOne({
-      $or: [{ email }, { name }],
+      $or: [{ email }],
     });
     let existingOrganizer = await organizerModel.findOne({
-      $or: [{ email }, { name }],
+      $or: [{ email }],
     });
 
     if (existingUser) {
       return res.status(409).json({
         success: false,
-        message: "User already exists with that email or name",
+        message: "User already exists with that email as a user",
       });
     }
 
     if (existingOrganizer) {
       return res.status(409).json({
         success: false,
-        message: "User already exists with that email or name",
+        message: "User already exists with that email as an organizer",
       });
     }
 
