@@ -12,44 +12,33 @@ const RegistrationSchema = new mongoose.Schema(
       ref: "Event",
       required: true,
     },
-    status: {
-      type: String,
-      enum: ["pending", "confirmed", "cancelled", "attended"],
-      default: "confirmed",
-    },
-    ticketType: {
-      type: String,
-      default: "general",
-    },
     ticketPrice: {
       type: Number,
+      required: true,
       default: 0,
     },
     paymentStatus: {
       type: String,
-      enum: ["pending", "paid", "refunded", "free"],
-      default: "free",
+      enum: ["pending", "paid", "failed", "refunded"],
+      default: "pending",
     },
     registrationDate: {
       type: Date,
       default: Date.now,
     },
-    attendanceDate: {
-      type: Date,
-    },
-    ticketId: {
+    status: {
       type: String,
-    },
-    additionalInfo: {
-      type: Object,
+      enum: ["active", "cancelled"],
+      default: "active",
     },
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+  }
 );
 
-// Add compound index to prevent duplicate registrations
+// Compound index to prevent duplicate registrations
 RegistrationSchema.index({ user: 1, event: 1 }, { unique: true });
 
 const Registration = mongoose.model("Registration", RegistrationSchema);
-
 export default Registration;

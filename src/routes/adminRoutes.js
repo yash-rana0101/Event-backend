@@ -1,6 +1,23 @@
 import express from "express";
 import { userOrAdminMiddleware } from "../middlewares/authMiddleware.js";
-import {getDashboardOverview,getAllUsers,updateUserStatus,getAllOrganizers,approveOrganizer,deleteOrganizer,getAllEventsAdmin,approveEvent,deleteEventAdmin,getAnalytics,getSystemConfig,updateSystemConfig,getOrganizerStats,getOrganizerById,updateOrganizerStatus,} from "../controllers/adminController.js";
+import {
+  getDashboardOverview,
+  getAllUsers,
+  updateUserStatus,
+  getAllOrganizers,
+  approveOrganizer,
+  deleteOrganizer,
+  getAllEventsAdmin,
+  deleteEventAdmin,
+  getAnalytics,
+  getSystemConfig,
+  updateSystemConfig,
+  getOrganizerStats,
+  getOrganizerById,
+  updateOrganizerStatus,
+  getEventDetails,
+  updateEventStatus,
+} from "../controllers/adminController.js";
 
 const router = express.Router();
 
@@ -22,7 +39,8 @@ router.delete("/organizers/:organizerId", deleteOrganizer);
 
 // Event management routes
 router.get("/events", getAllEventsAdmin);
-router.put("/events/:eventId/approve", approveEvent);
+router.get("/events/:eventId", getEventDetails);
+router.put("/events/:eventId/status", updateEventStatus);
 router.delete("/events/:eventId", deleteEventAdmin);
 
 // System configuration routes

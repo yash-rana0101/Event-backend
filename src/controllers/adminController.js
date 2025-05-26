@@ -329,7 +329,7 @@ export const getAllEventsAdmin = async (req, res) => {
   try {
     const {
       page = 1,
-      limit = 10,
+      limit = 12,
       search,
       status,
       category,
@@ -342,28 +342,112 @@ export const getAllEventsAdmin = async (req, res) => {
       query.$or = [
         { title: { $regex: search, $options: "i" } },
         { description: { $regex: search, $options: "i" } },
+        { tags: { $regex: search, $options: "i" } },
       ];
     }
 
-    if (status) query.status = status;
-    if (category) query.category = category;
-    if (featured !== undefined) query.featured = featured === "true";
+    // Map frontend status to backend status
+    if (status && status !== "all") {
+      if (status === "published") {
+        query.isPublished = true;
+      } else if (status === "draft") {
+        query.isPublished = false;
+      } else if (status === "suspended") {
+        query.status = "suspended";
+      } else if (status === "cancelled") {
+        query.status = "cancelled";
+      } else if (status === "completed") {
+        query.status = "completed";
+      }
+    }
+
+    if (category && category !== "all") {
+      query.category = category;
+    }
+
+    if (featured !== undefined) {
+      query.featured = featured === "true";
+    }
 
     const events = await Event.find(query)
-      .populate("organizer", "name organization")
+      .populate({
+        path: "organizer",
+        select: "name organization email verified status",
+      })
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(parseInt(limit));
 
+    // Transform events data to match frontend format
+    const transformedEvents = events.map((event) => {
+      const eventObj = event.toObject();
+      return {
+        id: eventObj._id,
+        title: eventObj.title,
+        description: eventObj.description,
+        organizer: eventObj.organizer?.name || "Unknown Organizer",
+        organizerId: eventObj.organizer?._id,
+        organizerCompany: eventObj.organizer?.organization,
+        category: eventObj.category,
+        status: eventObj.isPublished ? "published" : "draft",
+        publishStatus: eventObj.isPublished ? "published" : "unpublished",
+        startDate: eventObj.startDate
+          ? new Date(eventObj.startDate).toISOString().split("T")[0]
+          : eventObj.date,
+        endDate: eventObj.endDate
+          ? new Date(eventObj.endDate).toISOString().split("T")[0]
+          : eventObj.date,
+        startTime: "09:00", // Default time
+        endTime: "18:00", // Default time
+        location: eventObj.location?.address || "Not specified",
+        city: eventObj.location?.city || "Not specified",
+        country: eventObj.location?.country || "Not specified",
+        ticketPrice: eventObj.price || 0,
+        capacity: eventObj.capacity || 0,
+        registeredCount: eventObj.attendeesCount || 0,
+        revenue: `$${eventObj.attendeesCount * eventObj.price || 0}`,
+        rating: 0, // Will be calculated from reviews
+        reviewsCount: 0, // Will be calculated from reviews
+        likesCount: eventObj.socialShare?.likes || 0,
+        sharesCount: eventObj.socialShare?.shares || 0,
+        image: eventObj.image || "/api/placeholder/400/250",
+        tags: eventObj.tags || [],
+        createdAt: eventObj.createdAt.toISOString().split("T")[0],
+        lastModified: eventObj.updatedAt.toISOString().split("T")[0],
+        featured: eventObj.featured || false,
+        trending: false, // Can be calculated based on recent activity
+      };
+    });
+
     const totalEvents = await Event.countDocuments(query);
 
+    // Calculate stats
+    const totalEventsCount = await Event.countDocuments();
+    const publishedCount = await Event.countDocuments({ isPublished: true });
+    const draftCount = await Event.countDocuments({ isPublished: false });
+    const totalRevenue = await Event.aggregate([
+      { $match: { isPublished: true } },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: { $multiply: ["$attendeesCount", "$price"] } },
+        },
+      },
+    ]);
+
     return ApiResponse.success(res, "Events retrieved successfully", {
-      events,
+      events: transformedEvents,
       pagination: {
         total: totalEvents,
         page: parseInt(page),
         limit: parseInt(limit),
         pages: Math.ceil(totalEvents / limit),
+      },
+      stats: {
+        totalEvents: totalEventsCount,
+        publishedEvents: publishedCount,
+        draftEvents: draftCount,
+        totalRevenue: totalRevenue[0]?.total || 0,
       },
     });
   } catch (error) {
@@ -372,30 +456,49 @@ export const getAllEventsAdmin = async (req, res) => {
   }
 };
 
-export const approveEvent = async (req, res) => {
+// Publish/Unpublish Event
+export const updateEventStatus = async (req, res) => {
   try {
     const { eventId } = req.params;
-    const { approved, reason, featured } = req.body;
+    const { action, reason } = req.body;
 
     const event = await Event.findById(eventId);
     if (!event) {
       return ApiResponse.notFound(res, "Event not found");
     }
 
-    event.status = approved ? "active" : "rejected";
-    event.isPublished = approved;
-    if (featured !== undefined) event.featured = featured;
-    event.approvalReason = reason;
-    event.approvedBy = req.admin._id;
-    event.approvedAt = new Date();
+    switch (action) {
+      case "publish":
+        event.isPublished = true;
+        event.status = "active";
+        break;
+      case "unpublish":
+        event.isPublished = false;
+        event.status = "draft";
+        break;
+      case "suspend":
+        event.status = "suspended";
+        event.isPublished = false;
+        break;
+      case "feature":
+        event.featured = !event.featured;
+        break;
+      default:
+        return ApiResponse.badRequest(res, "Invalid action");
+    }
+
+    if (reason) {
+      event.adminNotes = reason;
+    }
 
     await event.save();
 
-    return ApiResponse.success(
-      res,
-      `Event ${approved ? "approved" : "rejected"} successfully`,
-      event
-    );
+    return ApiResponse.success(res, `Event ${action}ed successfully`, {
+      id: event._id,
+      title: event.title,
+      status: event.isPublished ? "published" : "draft",
+      featured: event.featured,
+    });
   } catch (error) {
     console.error("Error updating event status:", error);
     return ApiResponse.error(res, "Failed to update event status", 500);
@@ -783,20 +886,95 @@ export const getOrganizerById = async (req, res) => {
   }
 };
 
-// get all organizer
+// Event Details
+export const getEventDetails = async (req, res) => {
+  try {
+    const { eventId } = req.params;
+
+    const event = await Event.findById(eventId)
+      .populate({
+        path: "organizer",
+        select: "name organization email verified status",
+      })
+      .lean();
+
+    if (!event) {
+      return ApiResponse.notFound(res, "Event not found");
+    }
+
+    // Get registration count
+    const registrationCount = await Registration.countDocuments({
+      event: eventId,
+    });
+
+    // Transform event data to match the expected format
+    const eventDetails = {
+      _id: event._id,
+      id: event._id,
+      title: event.title,
+      description: event.description,
+      tagline: event.tagline,
+      organizer: event.organizer?._id,
+      organizerId: event.organizer?._id,
+      organizerName: event.organizer?.name || "Unknown Organizer",
+      organizerLogo: event.organizerLogo,
+      category: event.category,
+      isPublished: event.isPublished,
+      status: event.status,
+      featured: event.featured || false,
+      date: event.date,
+      startDate: event.startDate || event.date,
+      endDate: event.endDate || event.date,
+      duration: event.duration,
+      registrationDeadline: event.registrationDeadline,
+      location: event.location,
+      venue: event.venue,
+      capacity: event.capacity || 0,
+      attendeesCount: event.attendeesCount || 0,
+      registeredCount: registrationCount,
+      image: event.image,
+      tags: event.tags || [],
+      timeline: event.timeline || [],
+      prizes: event.prizes || [],
+      sponsors: event.sponsors || [],
+      faqs: event.faqs || [],
+      isPaid: event.isPaid || false,
+      price: event.price || 0,
+      currency: event.currency || "USD",
+      socialStats: {
+        likes: event.socialShare?.likes || 0,
+        comments: event.socialShare?.comments || 0,
+        shares: event.socialShare?.shares || 0,
+        saved: event.socialShare?.saved || 0,
+      },
+      createdAt: event.createdAt,
+      updatedAt: event.updatedAt,
+    };
+
+    return ApiResponse.success(
+      res,
+      "Event details retrieved successfully",
+      eventDetails
+    );
+  } catch (error) {
+    console.error("Error fetching event details:", error);
+    return ApiResponse.error(res, "Failed to fetch event details", 500);
+  }
+};
 
 // Export all controller functions for use in other modules
 export default {
   getDashboardOverview,
   getAllUsers,
   updateUserStatus,
-  getAllOrganizers, // <-- Make sure this is present
+  getAllOrganizers,
   approveOrganizer,
   getOrganizerStats,
   updateOrganizerStatus,
   deleteOrganizer,
   getAllEventsAdmin,
-  approveEvent,
+  getEventDetails,
+  updateEventStatus,
   getOrganizerById,
   deleteEventAdmin,
   getAnalytics,
