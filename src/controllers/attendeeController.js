@@ -48,8 +48,8 @@ export const getEventAttendees = async (req, res) => {
           ? "checked-in"
           : reg.status === "cancelled"
           ? "cancelled"
-          : reg.status === "vip"
-          ? "vip"
+          : reg.status === "pending"
+          ? "pending"
           : "not-checked-in",
       checkInTime: reg.attendanceDate || null,
       registrationDate: reg.registrationDate || reg.createdAt,

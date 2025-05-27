@@ -38,7 +38,7 @@ export const getDashboardOverview = async (req, res) => {
         .sort({ createdAt: -1 })
         .limit(5)
         .populate("organizer", "name")
-        .select("title status createdAt organizer"),
+        .select("title status createdAt organizer attendeesCount price"),
     ]);
 
     // Calculate growth metrics
@@ -69,6 +69,25 @@ export const getDashboardOverview = async (req, res) => {
       }),
     ]);
 
+    // Calculate total revenue
+    const revenueData = await Registration.aggregate([
+      {
+        $match: {
+          paymentStatus: { $in: ["paid", "completed"] },
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          totalRevenue: { $sum: "$ticketPrice" },
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+
+    const totalRevenue =
+      revenueData.length > 0 ? revenueData[0].totalRevenue : 0;
+
     const calculateGrowth = (current, previous) => {
       if (previous === 0) return current > 0 ? 100 : 0;
       return Math.round(((current - previous) / previous) * 100);
@@ -98,10 +117,17 @@ export const getDashboardOverview = async (req, res) => {
             lastMonthRegistrations
           ),
         },
+        totalRevenue: {
+          amount: totalRevenue,
+          currency: "USD",
+        },
       },
       recentActivity: {
         users: recentUsers,
-        events: recentEvents,
+        events: recentEvents.map((event) => ({
+          ...event.toObject(),
+          revenue: (event.attendeesCount || 0) * (event.price || 0),
+        })),
       },
       pendingApprovals: {
         organizers: pendingOrganizers,

@@ -57,7 +57,7 @@ export const registerForEvent = async (req, res) => {
       user: userId,
       event: eventId,
       status: "confirmed",
-      paymentStatus: event.isPaid ? "pending" : "free",
+      paymentStatus: event.isPaid ? "paid" : "free",
       ticketPrice: event.price || 0,
     });
 
@@ -137,18 +137,18 @@ const checkRegistration = async (req, res) => {
 
   const registration = await Registration.findOne({
     user: userId,
-    event: eventId
+    event: eventId,
   });
 
   if (registration) {
     res.json({
       isRegistered: true,
       status: registration.status, // Include status in the response
-      registrationId: registration._id
+      registrationId: registration._id,
     });
   } else {
     res.json({
-      isRegistered: false
+      isRegistered: false,
     });
   }
 };
@@ -192,26 +192,33 @@ const reactivateRegistration = async (req, res) => {
   }
 
   // Check if registration deadline has passed
-  if (event.registrationDeadline && new Date(event.registrationDeadline) < new Date()) {
-    return res.status(400).json({ message: "Registration deadline has passed" });
+  if (
+    event.registrationDeadline &&
+    new Date(event.registrationDeadline) < new Date()
+  ) {
+    return res
+      .status(400)
+      .json({ message: "Registration deadline has passed" });
   }
 
-// Check if event capacity is full (if applicable)
-if (event.capacity) {
-  const activeRegistrationsCount = await Registration.countDocuments({
-    event: eventId,
-    status: { $in: ["confirmed", "attended"] }
-  });
-  
-  if (activeRegistrationsCount >= event.capacity) {
-    return res.status(400).json({ message: "Event has reached maximum capacity" });
-  }
-}
+  // Check if event capacity is full (if applicable)
+  if (event.capacity) {
+    const activeRegistrationsCount = await Registration.countDocuments({
+      event: eventId,
+      status: { $in: ["confirmed", "attended"] },
+    });
 
-// Find existing registration (even if cancelled)
+    if (activeRegistrationsCount >= event.capacity) {
+      return res
+        .status(400)
+        .json({ message: "Event has reached maximum capacity" });
+    }
+  }
+
+  // Find existing registration (even if cancelled)
   let registration = await Registration.findOne({
     user: userId,
-    event: eventId
+    event: eventId,
   });
 
   if (!registration) {
@@ -220,10 +227,10 @@ if (event.capacity) {
 
   // If registration exists but wasn't cancelled, return appropriate response
   if (registration.status !== "cancelled") {
-    return res.status(400).json({ 
+    return res.status(400).json({
       message: "Registration is already active",
       isRegistered: true,
-      status: registration.status
+      status: registration.status,
     });
   }
 
@@ -242,7 +249,7 @@ if (event.capacity) {
     message: "Registration successfully reactivated",
     isRegistered: true,
     status: "confirmed",
-    registration
+    registration,
   });
 };
 
@@ -251,5 +258,5 @@ export default {
   cancelRegistration,
   checkRegistration,
   getUserRegistrations,
-  reactivateRegistration
+  reactivateRegistration,
 };

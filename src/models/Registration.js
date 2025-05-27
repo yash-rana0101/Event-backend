@@ -28,8 +28,8 @@ const RegistrationSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["active", "cancelled"],
-      default: "active",
+      enum: ["active", "cancelled", "confirmed", "attended", "pending"],
+      default: "confirmed",
     },
   },
   {

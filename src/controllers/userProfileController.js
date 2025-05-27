@@ -309,7 +309,7 @@ export const addEventReview = async (req, res) => {
     const registration = await Registration.findOne({
       user: userId,
       event: eventId,
-      attendanceStatus: true,
+      status: "attended",
     });
 
     if (!registration) {

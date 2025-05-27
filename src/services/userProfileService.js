@@ -99,7 +99,20 @@ export const syncUserEvents = async (userId) => {
       // Create default profile
       profile = new UserProfile({
         user: userId,
+        bio: "",
+        location: "",
         joinDate: new Date(),
+        eventsAttended: 0,
+        upcomingEvents: 0,
+        followers: 0,
+        following: 0,
+        interests: [],
+        preferences: [],
+        attendedEvents: [],
+        upcomingEventsList: [],
+        badges: [],
+        savedEvents: 0,
+        eventPhotos: 0,
         notificationPreferences: [
           {
             type: "event_reminder",
@@ -127,81 +140,44 @@ export const syncUserEvents = async (userId) => {
           },
         ],
       });
+      await profile.save();
     }
 
-    // Process attended events
-    const attendedEvents = registrations.filter(
-      (reg) =>
-        reg.attendanceStatus &&
-        reg.event &&
-        new Date(reg.event.endDate) < new Date()
-    );
+    // Update events attended count
+    profile.eventsAttended = registrations.length;
 
-    // Update attended events (keeping existing reviews)
-    const existingAttendedEvents = profile.attendedEvents || [];
-    const attendedEventsMap = new Map();
+    // Update upcoming events count
+    const now = new Date();
+    profile.upcomingEvents = registrations.filter(
+      (reg) => new Date(reg.event.startDate) > now
+    ).length;
 
-    // First build a map of existing attended events
-    existingAttendedEvents.forEach((event) => {
-      if (event.eventId) {
-        attendedEventsMap.set(event.eventId.toString(), event);
-      }
-    });
-
-    // Now process registrations and merge with existing data
-    profile.attendedEvents = attendedEvents.map((reg) => {
-      const eventId = reg.event._id.toString();
-      const existingEvent = attendedEventsMap.get(eventId);
-
-      // If event exists in profile, keep existing rating, review, etc.
-      if (existingEvent) {
-        return existingEvent;
-      }
-
-      // Otherwise create a new attended event entry
-      return {
+    // Update attended and upcoming events lists
+    profile.attendedEvents = registrations
+      .filter((reg) => new Date(reg.event.startDate) <= now)
+      .map((reg) => ({
         eventId: reg.event._id,
         name: reg.event.title,
-        date: new Date(reg.event.startDate).toLocaleDateString("en-US", {
-          month: "long",
-          day: "numeric",
-          year: "numeric",
-        }),
+        date: reg.event.startDate,
         type: reg.event.category,
-        image: reg.event.image || "/api/placeholder/80/80",
+        image: reg.event.image,
         location: reg.event.location?.address || "Online",
-        rating: 0,
-        review: "",
+        rating: null,
+        review: null,
         photos: [],
-      };
-    });
+      }));
 
-    // Process upcoming events
-    const upcomingEvents = registrations.filter(
-      (reg) =>
-        reg.status === "confirmed" &&
-        reg.event &&
-        new Date(reg.event.startDate) > new Date()
-    );
-
-    // Update upcoming events list
-    profile.upcomingEventsList = upcomingEvents.map((reg) => ({
-      eventId: reg.event._id,
-      name: reg.event.title,
-      date: new Date(reg.event.startDate).toLocaleDateString("en-US", {
-        month: "long",
-        day: "numeric",
-        year: "numeric",
-      }),
-      type: reg.event.category,
-      image: reg.event.image || "/api/placeholder/80/80",
-      location: reg.event.location?.address || "Online",
-      ticketType: reg.ticketType || (reg.event.isPaid ? "Paid" : "Free"),
-    }));
-
-    // Update counts
-    profile.eventsAttended = profile.attendedEvents.length;
-    profile.upcomingEvents = profile.upcomingEventsList.length;
+    profile.upcomingEventsList = registrations
+      .filter((reg) => new Date(reg.event.startDate) > now)
+      .map((reg) => ({
+        eventId: reg.event._id,
+        name: reg.event.title,
+        date: reg.event.startDate,
+        type: reg.event.category,
+        image: reg.event.image,
+        location: reg.event.location?.address || "Online",
+        ticketType: reg.ticketType || "Standard",
+      }));
 
     await profile.save();
     return profile;
