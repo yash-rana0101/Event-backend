@@ -9,6 +9,7 @@ const router = Router();
 
 // Public routes
 router.get("/", asyncHandler(eventController.getAllEvents)); // Get all events - already not filtering by status
+router.get("/newest", asyncHandler(eventController.getNewestEvents)); // Get newest events for carousel
 router.get("/published", asyncHandler(eventController.getPublishedEvents)); // Get published events
 router.get("/search", asyncHandler(eventController.searchEvents)); // Search events
 router.get(

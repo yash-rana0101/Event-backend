@@ -652,3 +652,28 @@ export const searchEvents = async (req, res) => {
     });
   }
 };
+
+// Get newest events (for carousel)
+export const getNewestEvents = async (req, res) => {
+  try {
+    const { limit = 5 } = req.query;
+
+    const events = await Event.find({
+      isPublished: true,
+      featured: true,
+    })
+      .populate("organizer", "name profilePicture")
+      .sort({ createdAt: -1 })
+      .limit(parseInt(limit));
+
+    res.status(200).json({
+      events,
+      totalEvents: events.length,
+    });
+  } catch (error) {
+    console.error("Error getting newest events:", error);
+    res
+      .status(500)
+      .json({ message: "Failed to get newest events", error: error.message });
+  }
+};
