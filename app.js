@@ -23,6 +23,7 @@ import userProfileRoutes from "./src/routes/userProfileRoutes.js";
 import reviewRoutes from "./src/routes/reviewRoutes.js";
 import adminRoutes from "./src/routes/adminRoutes.js";
 import settingsRoutes from "./src/routes/settings.js";
+import authRoutes from "./src/routes/authRoutes.js";
 
 // Import middleware
 import { authMiddleware } from "./src/middlewares/authMiddleware.js";
@@ -67,6 +68,7 @@ if (process.env.NODE_ENV === "production") {
 app.use(express.static("public"));
 
 // API routes
+app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/organizer", organizerRoutes);
 app.use("/api/v1/events", eventRoutes);
 app.use("/api/v1/profiles", userProfileRoutes);

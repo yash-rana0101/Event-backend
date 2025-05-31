@@ -5,7 +5,7 @@ dotenv.config();
 
 // Configuration variables with fallbacks for development
 export const config = {
-  jwtSecret: process.env.JWT_SECRET ,
+  jwtSecret: process.env.JWT_SECRET,
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || "1d",
   mongoUri: process.env.MONGODB_URI || "mongodb://localhost:27017/cyber-hunter",
   port: process.env.PORT || 3000,
@@ -14,6 +14,13 @@ export const config = {
     "http://localhost:5173",
     "http://localhost:5174",
   ],
+  google: {
+    clientId: process.env.GOOGLE_CLIENT_ID,
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+    redirectUri:
+      process.env.GOOGLE_REDIRECT_URI ||
+      "http://localhost:3000/api/v1/auth/google/callback", // Fixed: Point to backend
+  },
 };
 
 // Helper function to validate config

@@ -42,8 +42,14 @@ const UserSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    googleId: {
+      type: String,
+      unique: true,
+      sparse: true, // Allows multiple null values
+    },
     avatar: {
       type: String,
+      default: null,
     },
     bio: {
       type: String,
@@ -70,6 +76,10 @@ const UserSchema = new mongoose.Schema(
       default: true,
     },
     marketingEmails: {
+      type: Boolean,
+      default: false,
+    },
+    emailVerified: {
       type: Boolean,
       default: false,
     },
